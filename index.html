@@ -19,16 +19,7 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, onSnapshot, updateDoc, setDoc, deleteDoc, getDocs, getDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyAhFsT9cgzaNFdfYA5i3HKiROEbBXd5ROw",
-            authDomain: "kupon-kurban-1447-h.firebaseapp.com",
-            projectId: "kupon-kurban-1447-h",
-            storageBucket: "kupon-kurban-1447-h.firebasestorage.app",
-            messagingSenderId: "1076752911467",
-            appId: "1:1076752911467:web:239091f667fe6c4782f52e",
-            measurementId: "G-9BXQWHLKH1"
-        };
-
+        const firebaseConfig = JSON.parse(__firebase_config);
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
@@ -46,14 +37,15 @@
         window.collection = collection;
         window.writeBatch = writeBatch;
 
+        // Global State
+        window.currentUser = null; 
+        window.coupons = [];
+        window.unsubscribeSync = null;
+
         const initAuth = async () => {
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    try {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } catch (tokenError) {
-                        await signInAnonymously(auth);
-                    }
+                    await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
                     await signInAnonymously(auth);
                 }
@@ -63,17 +55,19 @@
         };
 
         onAuthStateChanged(auth, (user) => {
-            if (user) {
-                startDataSync();
-            }
+            // Auth dasar Firebase selesai, tapi kita tunggu login username
+            console.log("Firebase Auth Ready");
         });
 
         initAuth();
 
-        function startDataSync() {
-            const collectionRef = collection(db, 'artifacts', appId, 'public', 'data', 'coupons');
+        window.startDataSync = function(username) {
+            if (window.unsubscribeSync) window.unsubscribeSync();
             
-            onSnapshot(collectionRef, (snapshot) => {
+            // Path Isolat: Data disimpan berdasarkan username masing-masing
+            const collectionRef = collection(db, 'artifacts', appId, 'users', username, 'coupons');
+            
+            window.unsubscribeSync = onSnapshot(collectionRef, (snapshot) => {
                 const updatedCoupons = [];
                 snapshot.forEach((doc) => {
                     updatedCoupons.push({ id: doc.id, ...doc.data() });
@@ -143,13 +137,11 @@
                 </div>
             </div>
 
-            <!-- Tab Switcher -->
             <div class="flex bg-slate-100 p-1 rounded-2xl">
                 <button onclick="toggleAuthMode('login')" id="tab-login" class="flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all bg-white shadow-sm text-emerald-600">Masuk</button>
                 <button onclick="toggleAuthMode('register')" id="tab-register" class="flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all text-slate-400">Daftar</button>
             </div>
 
-            <!-- Form Login -->
             <div id="auth-form" class="space-y-4">
                 <div class="space-y-1">
                     <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Username</label>
@@ -216,7 +208,10 @@
                     <div class="bg-emerald-600 p-2 rounded-xl text-white shadow-lg shadow-emerald-100">
                         <i data-lucide="ticket" class="w-5 h-5"></i>
                     </div>
-                    <h2 id="page-title" class="text-3xl font-black tracking-tight text-slate-800 leading-none uppercase italic">Dashboard</h2>
+                    <div>
+                        <h2 id="page-title" class="text-3xl font-black tracking-tight text-slate-800 leading-none uppercase italic">Dashboard</h2>
+                        <p id="user-display" class="text-[10px] text-slate-400 font-bold uppercase mt-1"></p>
+                    </div>
                 </div>
                 <button onclick="handleLogout()" class="p-4 bg-slate-100 rounded-2xl text-slate-400 active:scale-90 transition-all no-print">
                     <i data-lucide="log-out" class="w-5 h-5"></i>
@@ -382,22 +377,17 @@
     <div id="print-area"></div>
 
     <script>
-        window.coupons = [];
-        window.selectedIds = [];
         let currentFilter = 'Semua';
-        let authMode = 'login'; // 'login' or 'register'
+        let authMode = 'login'; 
         let html5QrCode = null;
         let toastTimeout = null;
         window.currentFacingMode = "environment"; 
-
-        // --- AUTH LOGIC (LOGIN & REGISTER) ---
 
         function toggleAuthMode(mode) {
             authMode = mode;
             const tabLogin = document.getElementById('tab-login');
             const tabRegister = document.getElementById('tab-register');
             const btnSubmit = document.getElementById('btn-auth-submit');
-            
             if (mode === 'login') {
                 tabLogin.className = "flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all bg-white shadow-sm text-emerald-600";
                 tabRegister.className = "flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all text-slate-400";
@@ -413,31 +403,27 @@
             const user = document.getElementById('login-user').value.trim();
             const pass = document.getElementById('login-pass').value.trim();
             const btn = document.getElementById('btn-auth-submit');
-            
             if (!user || !pass) return showToast('error', 'Lengkapi Username & Password!');
-
-            btn.disabled = true;
-            btn.innerHTML = 'Memproses...';
+            btn.disabled = true; btn.innerHTML = 'Memproses...';
 
             try {
+                // Selalu baca data dari PUBLIC untuk akses login
                 const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'access_codes', user);
-                
                 if (authMode === 'login') {
                     const docSnap = await window.getDoc(docRef);
                     if (docSnap.exists() && docSnap.data().password === pass) {
-                        showToast('success', 'Selamat Datang!');
+                        window.currentUser = user;
+                        document.getElementById('user-display').innerText = `Petugas: ${user}`;
                         document.getElementById('login-screen').classList.add('hidden');
                         document.getElementById('loading-screen').classList.remove('hidden');
-                        setTimeout(() => {
-                            document.getElementById('main-app').classList.remove('hidden');
-                            window.refreshUI();
-                        }, 1000);
+                        // Jalankan sinkronisasi data privat user
+                        window.startDataSync(user);
+                        showToast('success', 'Selamat Datang!');
                     } else {
                         showToast('error', 'Username atau Password salah!');
                         resetBtn();
                     }
                 } else {
-                    // Register Logic
                     const docSnap = await window.getDoc(docRef);
                     if (docSnap.exists()) {
                         showToast('error', 'Username sudah terpakai!');
@@ -445,14 +431,11 @@
                     } else {
                         await window.setDoc(docRef, { password: pass, status: 'aktif' });
                         showToast('success', 'Akun berhasil dibuat! Silakan Masuk.');
-                        toggleAuthMode('login');
-                        resetBtn();
+                        toggleAuthMode('login'); resetBtn();
                     }
                 }
             } catch (e) {
-                console.error(e);
-                showToast('error', 'Kesalahan Sistem!');
-                resetBtn();
+                console.error(e); showToast('error', 'Kesalahan Sistem!'); resetBtn();
             }
 
             function resetBtn() {
@@ -463,22 +446,16 @@
 
         function handleLogout() {
             if (!confirm('Keluar dari sistem?')) return;
+            if (window.unsubscribeSync) window.unsubscribeSync();
             if (html5QrCode) stopScanner();
+            window.currentUser = null;
             document.getElementById('main-app').classList.add('hidden');
-            document.getElementById('loading-screen').classList.add('hidden');
             document.getElementById('login-screen').classList.remove('hidden');
             document.getElementById('login-user').value = '';
             document.getElementById('login-pass').value = '';
-            resetAuthBtn();
-        }
-
-        function resetAuthBtn() {
             const btn = document.getElementById('btn-auth-submit');
-            btn.disabled = false;
-            btn.innerText = "Masuk Sistem";
+            btn.disabled = false; btn.innerText = "Masuk Sistem";
         }
-
-        // --- CORE APP LOGIC (UNCHANGED AS PER "HARAM" RULE) ---
 
         window.hideLoading = () => {
             const screen = document.getElementById('loading-screen');
@@ -573,8 +550,7 @@
                     </div>
                 </div>
             `).join('');
-            updateDeleteButton();
-            lucide.createIcons();
+            window.selectedIds = []; updateDeleteButton(); lucide.createIcons();
         }
 
         function toggleSelect(id) {
@@ -589,22 +565,24 @@
 
         function updateDeleteButton() {
             const btn = document.getElementById('btn-delete-selected');
-            if (window.selectedIds.length > 0) {
+            if (window.selectedIds && window.selectedIds.length > 0) {
                 btn.classList.remove('hidden');
                 document.getElementById('selected-count').innerText = `${window.selectedIds.length} Terpilih`;
             } else { btn.classList.add('hidden'); }
         }
 
         async function deleteSelectedMustahik() {
+            if (!window.currentUser) return;
             if (window.selectedIds.length === 0 || !confirm(`Hapus ${window.selectedIds.length} data?`)) return;
             showToast('info', `Menghapus...`);
             try {
                 const batch = window.writeBatch(window.db);
-                window.selectedIds.forEach(id => batch.delete(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'coupons', id)));
+                window.selectedIds.forEach(id => {
+                    const docRef = window.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser, 'coupons', id);
+                    batch.delete(docRef);
+                });
                 await batch.commit();
                 showToast('success', 'Berhasil dihapus.');
-                window.selectedIds = [];
-                updateDeleteButton();
             } catch (e) { showToast('error', 'Gagal menghapus.'); }
         }
 
@@ -631,6 +609,7 @@
         function closeImport() { document.getElementById('import-modal').classList.add('hidden'); }
 
         async function processMassImport() {
+            if (!window.currentUser) return;
             const text = document.getElementById('input-massal').value.trim();
             if (!text) return showToast('error', 'Kotak teks kosong!');
             const lines = text.split('\n');
@@ -642,7 +621,8 @@
                     if (name && name.trim()) {
                         lastNum++;
                         const docId = `QRB-${lastNum.toString().padStart(3, '0')}`;
-                        batch.set(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'coupons', docId), {
+                        const docRef = window.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser, 'coupons', docId);
+                        batch.set(docRef, {
                             name: name.trim(), category: (category || 'Umum').trim(), status: 'Belum Diambil', timestamp: null
                         });
                     }
@@ -652,6 +632,7 @@
         }
 
         async function saveMustahik() {
+            if (!window.currentUser) return;
             const id = document.getElementById('edit-id').value;
             const name = document.getElementById('input-name').value.trim();
             const category = document.getElementById('input-category').value.trim();
@@ -664,14 +645,20 @@
                     docId = `QRB-${(lastNum + 1).toString().padStart(3, '0')}`;
                     data.status = "Belum Diambil"; data.timestamp = null;
                 }
-                await window.setDoc(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'coupons', docId), data, { merge: true });
+                const docRef = window.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser, 'coupons', docId);
+                await window.setDoc(docRef, data, { merge: true });
                 showToast('success', 'Berhasil disimpan.'); closeForm();
             } catch (e) { showToast('error', 'Gagal menyimpan.'); }
         }
 
         async function deleteMustahik(id) {
+            if (!window.currentUser) return;
             if (!confirm(`Hapus ${id}?`)) return;
-            try { await window.deleteDoc(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'coupons', id)); showToast('success', 'Terhapus.'); } catch (e) { showToast('error', 'Gagal.'); }
+            try {
+                const docRef = window.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser, 'coupons', id);
+                await window.deleteDoc(docRef);
+                showToast('success', 'Terhapus.');
+            } catch (e) { showToast('error', 'Gagal.'); }
         }
 
         function exportData() {
@@ -679,7 +666,7 @@
             let csv = "ID,Nama,Kategori,Status,Waktu\n" + rows.map(e => e.join(",")).join("\n");
             const link = document.createElement("a");
             link.href = encodeURI("data:text/csv;charset=utf-8," + csv);
-            link.download = "Laporan_Kurban.csv"; link.click();
+            link.download = `Laporan_Kurban_${window.currentUser}.csv`; link.click();
         }
 
         async function printAllCoupons() {
@@ -712,13 +699,15 @@
         }
 
         async function processKlaim(id) {
+            if (!window.currentUser) return;
             const c = window.coupons.find(x => x.id.toUpperCase() === id.toUpperCase());
             if (!c) return showToast('error', 'KUPON TIDAK VALID');
             if (c.status === 'Sudah Diambil') return showToast('error', 'SUDAH DIAMBIL');
             const now = new Date();
             const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
             try {
-                await window.updateDoc(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'coupons', c.id), { status: 'Sudah Diambil', timestamp: timeStr });
+                const docRef = window.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser, 'coupons', c.id);
+                await window.updateDoc(docRef, { status: 'Sudah Diambil', timestamp: timeStr });
                 showToast('success', `BERHASIL: ${c.name}`);
                 stopScanner();
             } catch (e) { showToast('error', 'Gagal Klaim'); }
