@@ -17,9 +17,18 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, onSnapshot, updateDoc, setDoc, deleteDoc, getDocs, getDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, doc, onSnapshot, updateDoc, setDoc, deleteDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const firebaseConfig = JSON.parse(__firebase_config);
+        const firebaseConfig = {
+            apiKey: "AIzaSyAhFsT9cgzaNFdfYA5i3HKiROEbBXd5ROw",
+            authDomain: "kupon-kurban-1447-h.firebaseapp.com",
+            projectId: "kupon-kurban-1447-h",
+            storageBucket: "kupon-kurban-1447-h.firebasestorage.app",
+            messagingSenderId: "1076752911467",
+            appId: "1:1076752911467:web:239091f667fe6c4782f52e",
+            measurementId: "G-9BXQWHLKH1"
+        };
+
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
@@ -30,24 +39,20 @@
         window.appId = appId;
         window.updateDoc = updateDoc;
         window.doc = doc;
-        window.getDoc = getDoc;
         window.setDoc = setDoc;
         window.deleteDoc = deleteDoc;
         window.getDocs = getDocs;
         window.collection = collection;
         window.writeBatch = writeBatch;
 
-        // Global State
-        window.currentUser = null; 
-        window.coupons = [];
-        window.unsubscribeSync = null;
-        window.isFirebaseReady = false;
-
-        // Fungsi Inisialisasi Auth (MANDATORY RULE 3)
         const initAuth = async () => {
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
+                    try {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } catch (tokenError) {
+                        await signInAnonymously(auth);
+                    }
                 } else {
                     await signInAnonymously(auth);
                 }
@@ -58,34 +63,16 @@
 
         onAuthStateChanged(auth, (user) => {
             if (user) {
-                window.isFirebaseReady = true;
-                console.log("Firebase Auth Ready:", user.uid);
+                startDataSync();
             }
         });
 
         initAuth();
 
-        // Helper untuk menunggu Autentikasi sebelum akses Firestore
-        window.ensureAuth = () => {
-            return new Promise((resolve) => {
-                if (window.isFirebaseReady) return resolve();
-                const interval = setInterval(() => {
-                    if (window.isFirebaseReady) {
-                        clearInterval(interval);
-                        resolve();
-                    }
-                }, 100);
-            });
-        };
-
-        window.startDataSync = async function(username) {
-            await window.ensureAuth();
-            if (window.unsubscribeSync) window.unsubscribeSync();
+        function startDataSync() {
+            const collectionRef = collection(db, 'artifacts', appId, 'public', 'data', 'coupons');
             
-            // Path Isolat: Data disimpan berdasarkan username masing-masing
-            const collectionRef = collection(db, 'artifacts', appId, 'users', username, 'coupons');
-            
-            window.unsubscribeSync = onSnapshot(collectionRef, (snapshot) => {
+            onSnapshot(collectionRef, (snapshot) => {
                 const updatedCoupons = [];
                 snapshot.forEach((doc) => {
                     updatedCoupons.push({ id: doc.id, ...doc.data() });
@@ -97,9 +84,6 @@
             }, (error) => {
                 window.hideLoading();
                 console.error("Sync Error:", error);
-                if (error.code === 'permission-denied') {
-                    showToast('error', 'Izin Ditolak! Pastikan Firestore Rules sudah diatur.');
-                }
             });
         }
     </script>
@@ -121,12 +105,38 @@
         .nav-indicator { position: absolute; bottom: -2px; width: 4px; height: 4px; background-color: #059669; border-radius: 50%; opacity: 0; transition: opacity 0.3s ease; }
         .nav-item.active .nav-indicator { opacity: 1; }
         
-        #print-area { position: absolute; left: -9999px; top: 0; width: 100%; height: auto; visibility: hidden; }
+        /* Area Cetak Default (Sembunyi) */
+        #print-area { 
+            position: absolute; 
+            left: -9999px; 
+            top: 0; 
+            width: 100%; 
+            height: auto;
+            visibility: hidden;
+        }
         
         @media print {
-            nav, header, button, .no-print, #toast, .modal-backdrop, main, #loading-screen, .modal-overlay, #login-screen { display: none !important; }
-            #print-area { display: block !important; position: static !important; visibility: visible !important; height: auto !important; width: 100% !important; z-index: 99999 !important; }
-            .coupon-card { border: 2px solid #000; margin-bottom: 20px; padding: 15px; display: flex !important; align-items: center; gap: 20px; page-break-inside: avoid; break-inside: avoid; }
+            nav, header, button, .no-print, #toast, .modal-backdrop, main, #loading-screen, .modal-overlay, #login-screen { 
+                display: none !important; 
+            }
+            #print-area { 
+                display: block !important; 
+                position: static !important; 
+                visibility: visible !important; 
+                height: auto !important; 
+                width: 100% !important;
+                z-index: 99999 !important; 
+            }
+            .coupon-card { 
+                border: 2px solid #000; 
+                margin-bottom: 20px; 
+                padding: 15px; 
+                display: flex !important; 
+                align-items: center; 
+                gap: 20px; 
+                page-break-inside: avoid; 
+                break-inside: avoid;
+            }
             body { background: white !important; }
         }
 
@@ -138,45 +148,45 @@
         #reader { width: 100% !important; border: none !important; border-radius: 2rem; overflow: hidden; }
         #reader video { object-fit: cover !important; width: 100% !important; height: 100% !important; border-radius: 2rem; }
 
-        #login-screen { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); z-index: 300; }
-        .login-card { animation: loginSlideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
-        @keyframes loginSlideUp { from { opacity: 0; transform: translateY(40px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        /* Login Screen Styling */
+        #login-screen {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            z-index: 300;
+        }
+        .login-card {
+            animation: loginSlideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes loginSlideUp {
+            from { opacity: 0; transform: translateY(40px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen select-none">
 
     <!-- Screen Login -->
     <div id="login-screen" class="fixed inset-0 flex items-center justify-center p-6 overflow-y-auto">
-        <div class="login-card max-w-sm w-full bg-white rounded-[3rem] p-8 shadow-2xl border border-slate-100 space-y-8">
-            <div class="text-center space-y-4">
-                <div class="w-20 h-20 bg-emerald-600 rounded-[2rem] flex items-center justify-center mx-auto shadow-xl shadow-emerald-200">
-                    <i data-lucide="ticket" class="text-white w-10 h-10"></i>
+        <div class="login-card max-w-sm w-full bg-white rounded-[3rem] p-10 shadow-2xl border border-slate-100 text-center space-y-10">
+            <div class="space-y-4">
+                <div class="w-24 h-24 bg-emerald-600 rounded-[2.5rem] flex items-center justify-center mx-auto shadow-xl shadow-emerald-200">
+                    <i data-lucide="ticket" class="text-white w-12 h-12"></i>
                 </div>
                 <div>
-                    <h1 class="text-3xl font-black text-slate-900 tracking-tighter uppercase italic">UDHIYAH</h1>
-                    <p class="text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em] mt-1">Sistem Manajemen Kurban</p>
+                    <h1 class="text-4xl font-black text-slate-900 tracking-tighter uppercase italic">UDHIYAH</h1>
+                    <p class="text-slate-400 font-bold text-xs uppercase tracking-[0.2em] mt-1">Manajemen Kurban Digital</p>
                 </div>
             </div>
 
-            <div class="flex bg-slate-100 p-1 rounded-2xl">
-                <button onclick="toggleAuthMode('login')" id="tab-login" class="flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all bg-white shadow-sm text-emerald-600">Masuk</button>
-                <button onclick="toggleAuthMode('register')" id="tab-register" class="flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all text-slate-400">Daftar</button>
+            <div class="space-y-4">
+                <div class="text-left">
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 mb-2 block">Kode Akses Panitia</label>
+                    <input id="login-pass" type="password" placeholder="••••••••" class="w-full px-8 py-5 rounded-3xl bg-slate-50 border-none outline-none font-bold text-center text-lg focus:ring-4 focus:ring-emerald-500/10 transition-all">
+                </div>
+                <button id="btn-login-submit" onclick="handleLogin()" class="w-full bg-slate-900 text-white py-6 rounded-3xl font-black text-lg shadow-xl active:scale-95 transition-all">MASUK SISTEM <i data-lucide="arrow-right" class="inline ml-2 w-5 h-5"></i></button>
             </div>
 
-            <div id="auth-form" class="space-y-4">
-                <div class="space-y-1">
-                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Username</label>
-                    <input id="login-user" type="text" placeholder="Username" class="w-full px-6 py-4 rounded-2xl bg-slate-50 border-none outline-none font-bold text-sm focus:ring-4 focus:ring-emerald-500/10 transition-all">
-                </div>
-                <div class="space-y-1">
-                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Password</label>
-                    <input id="login-pass" type="password" placeholder="••••••••" class="w-full px-6 py-4 rounded-2xl bg-slate-50 border-none outline-none font-bold text-sm focus:ring-4 focus:ring-emerald-500/10 transition-all">
-                </div>
-                <button id="btn-auth-submit" onclick="handleAuth()" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all uppercase tracking-widest">Masuk Sistem</button>
-            </div>
-
-            <div class="pt-4 border-t border-slate-50 text-center">
-                <p class="text-[9px] text-slate-300 font-bold uppercase tracking-widest leading-relaxed">
+            <div class="pt-6 border-t border-slate-50">
+                <p class="text-[10px] text-slate-300 font-bold uppercase tracking-widest leading-relaxed">
                     Masjid An-Nur • 1447 H<br>
                     © 2024 Panitia Kurban
                 </p>
@@ -184,7 +194,7 @@
         </div>
     </div>
 
-    <!-- Screen Pemuatan -->
+    <!-- Screen Pemuatan (Tampil setelah login) -->
     <div id="loading-screen" class="fixed inset-0 z-[200] flex flex-col items-center justify-center hidden">
         <div class="relative">
             <div class="w-20 h-20 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin"></div>
@@ -198,6 +208,7 @@
 
     <!-- Aplikasi Utama -->
     <div id="main-app" class="hidden">
+        <!-- Navigasi Bawah -->
         <nav class="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-slate-100 z-[100] no-print safe-bottom">
             <div class="max-w-md mx-auto px-10 h-20 flex items-center justify-between">
                 <button onclick="setActiveTab('dashboard')" class="nav-item group flex flex-col items-center gap-1" data-tab="dashboard">
@@ -218,6 +229,7 @@
             </div>
         </nav>
 
+        <!-- Notifikasi Toast -->
         <div id="toast" class="fixed top-8 left-1/2 -translate-x-1/2 z-[210] px-6 py-4 rounded-full shadow-2xl flex items-center gap-3 transition-all duration-500 opacity-0 pointer-events-none scale-90 border-2 no-print bg-white/95 backdrop-blur-md">
             <i id="toast-icon" data-lucide="check-circle" class="w-5 h-5"></i>
             <span id="toast-text" class="font-bold text-sm text-slate-800"></span>
@@ -229,10 +241,7 @@
                     <div class="bg-emerald-600 p-2 rounded-xl text-white shadow-lg shadow-emerald-100">
                         <i data-lucide="ticket" class="w-5 h-5"></i>
                     </div>
-                    <div>
-                        <h2 id="page-title" class="text-3xl font-black tracking-tight text-slate-800 leading-none uppercase italic">Dashboard</h2>
-                        <p id="user-display" class="text-[10px] text-slate-400 font-bold uppercase mt-1"></p>
-                    </div>
+                    <h2 id="page-title" class="text-3xl font-black tracking-tight text-slate-800 leading-none uppercase italic">Dashboard</h2>
                 </div>
                 <button onclick="handleLogout()" class="p-4 bg-slate-100 rounded-2xl text-slate-400 active:scale-90 transition-all no-print">
                     <i data-lucide="log-out" class="w-5 h-5"></i>
@@ -382,7 +391,7 @@
     </div>
 
     <div id="qr-modal" class="fixed inset-0 z-[110] modal-overlay hidden flex-col items-center justify-center p-4 no-print">
-        <div class="bg-white rounded-[2.5rem] p-8 max-sm w-full text-center space-y-6 shadow-2xl modal-content">
+        <div class="bg-white rounded-[2.5rem] p-8 max-w-sm w-full text-center space-y-6 shadow-2xl modal-content">
             <h3 id="modal-name" class="text-2xl font-extrabold text-slate-800"></h3>
             <div id="qrcode-container" class="bg-white p-6 rounded-[2rem] inline-block mx-auto border-4 border-slate-50 shadow-inner"></div>
             <p id="modal-id" class="font-mono font-black text-3xl text-emerald-600 uppercase tracking-widest"></p>
@@ -398,89 +407,66 @@
     <div id="print-area"></div>
 
     <script>
+        window.coupons = [];
+        window.selectedIds = [];
         let currentFilter = 'Semua';
-        let authMode = 'login'; 
         let html5QrCode = null;
         let toastTimeout = null;
         window.currentFacingMode = "environment"; 
 
-        function toggleAuthMode(mode) {
-            authMode = mode;
-            const tabLogin = document.getElementById('tab-login');
-            const tabRegister = document.getElementById('tab-register');
-            const btnSubmit = document.getElementById('btn-auth-submit');
-            if (mode === 'login') {
-                tabLogin.className = "flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all bg-white shadow-sm text-emerald-600";
-                tabRegister.className = "flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all text-slate-400";
-                btnSubmit.innerText = "Masuk Sistem";
-            } else {
-                tabRegister.className = "flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all bg-white shadow-sm text-emerald-600";
-                tabLogin.className = "flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all text-slate-400";
-                btnSubmit.innerText = "Daftar Akun Baru";
-            }
-        }
+        // --- FUNGSI LOGIN & LOGOUT PERBAIKAN ---
 
-        async function handleAuth() {
-            const user = document.getElementById('login-user').value.trim();
+        async function handleLogin() {
             const pass = document.getElementById('login-pass').value.trim();
-            const btn = document.getElementById('btn-auth-submit');
-            if (!user || !pass) return showToast('error', 'Lengkapi Username & Password!');
-            btn.disabled = true; btn.innerHTML = 'Memproses...';
+            const btn = document.getElementById('btn-login-submit');
+            
+            if (!pass) return showToast('error', 'Masukkan kode akses!');
+
+            btn.disabled = true;
+            btn.innerHTML = 'VERIFIKASI...';
 
             try {
-                // Pastikan Firebase Auth sudah terhubung secara anonim/token (RULE 3)
-                await window.ensureAuth();
+                // Mengambil kode valid dari Firestore: artifacts/{appId}/public/data/access_codes
+                const codesRef = window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'access_codes');
+                const snapshot = await window.getDocs(codesRef);
+                const validCodes = [];
+                snapshot.forEach(doc => validCodes.push(doc.id));
 
-                // Selalu baca data dari PUBLIC untuk akses login
-                const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'access_codes', user);
-                if (authMode === 'login') {
-                    const docSnap = await window.getDoc(docRef);
-                    if (docSnap.exists() && docSnap.data().password === pass) {
-                        window.currentUser = user;
-                        document.getElementById('user-display').innerText = `Petugas: ${user}`;
-                        document.getElementById('login-screen').classList.add('hidden');
-                        document.getElementById('loading-screen').classList.remove('hidden');
-                        // Jalankan sinkronisasi data privat user
-                        window.startDataSync(user);
-                        showToast('success', 'Selamat Datang!');
-                    } else {
-                        showToast('error', 'Username atau Password salah!');
-                        resetBtn();
-                    }
+                if (validCodes.includes(pass)) {
+                    document.getElementById('login-screen').classList.add('hidden');
+                    document.getElementById('loading-screen').classList.remove('hidden');
+                    
+                    setTimeout(() => {
+                        document.getElementById('main-app').classList.remove('hidden');
+                        window.refreshUI();
+                    }, 1000);
                 } else {
-                    const docSnap = await window.getDoc(docRef);
-                    if (docSnap.exists()) {
-                        showToast('error', 'Username sudah terpakai!');
-                        resetBtn();
-                    } else {
-                        await window.setDoc(docRef, { password: pass, status: 'aktif' });
-                        showToast('success', 'Akun berhasil dibuat! Silakan Masuk.');
-                        toggleAuthMode('login'); resetBtn();
-                    }
+                    showToast('error', 'Kode akses tidak terdaftar di database!');
+                    btn.disabled = false;
+                    btn.innerHTML = 'MASUK SISTEM <i data-lucide="arrow-right" class="inline ml-2 w-5 h-5"></i>';
+                    lucide.createIcons();
                 }
             } catch (e) {
-                console.error(e); 
-                showToast('error', 'Kesalahan: ' + e.message); 
-                resetBtn();
-            }
-
-            function resetBtn() {
+                console.error(e);
+                showToast('error', 'Gagal memverifikasi database.');
                 btn.disabled = false;
-                btn.innerText = authMode === 'login' ? "Masuk Sistem" : "Daftar Akun Baru";
+                btn.innerHTML = 'MASUK SISTEM';
             }
         }
 
         function handleLogout() {
             if (!confirm('Keluar dari sistem?')) return;
-            if (window.unsubscribeSync) window.unsubscribeSync();
             if (html5QrCode) stopScanner();
-            window.currentUser = null;
+            
             document.getElementById('main-app').classList.add('hidden');
+            document.getElementById('loading-screen').classList.add('hidden');
             document.getElementById('login-screen').classList.remove('hidden');
-            document.getElementById('login-user').value = '';
+            
             document.getElementById('login-pass').value = '';
-            const btn = document.getElementById('btn-auth-submit');
-            btn.disabled = false; btn.innerText = "Masuk Sistem";
+            const btn = document.getElementById('btn-login-submit');
+            btn.disabled = false;
+            btn.innerHTML = 'MASUK SISTEM <i data-lucide="arrow-right" class="inline ml-2 w-5 h-5"></i>';
+            lucide.createIcons();
         }
 
         window.hideLoading = () => {
@@ -576,7 +562,8 @@
                     </div>
                 </div>
             `).join('');
-            window.selectedIds = []; updateDeleteButton(); lucide.createIcons();
+            updateDeleteButton();
+            lucide.createIcons();
         }
 
         function toggleSelect(id) {
@@ -591,24 +578,22 @@
 
         function updateDeleteButton() {
             const btn = document.getElementById('btn-delete-selected');
-            if (window.selectedIds && window.selectedIds.length > 0) {
+            if (window.selectedIds.length > 0) {
                 btn.classList.remove('hidden');
                 document.getElementById('selected-count').innerText = `${window.selectedIds.length} Terpilih`;
             } else { btn.classList.add('hidden'); }
         }
 
         async function deleteSelectedMustahik() {
-            if (!window.currentUser || !window.isFirebaseReady) return;
             if (window.selectedIds.length === 0 || !confirm(`Hapus ${window.selectedIds.length} data?`)) return;
             showToast('info', `Menghapus...`);
             try {
                 const batch = window.writeBatch(window.db);
-                window.selectedIds.forEach(id => {
-                    const docRef = window.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser, 'coupons', id);
-                    batch.delete(docRef);
-                });
+                window.selectedIds.forEach(id => batch.delete(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'coupons', id)));
                 await batch.commit();
                 showToast('success', 'Berhasil dihapus.');
+                window.selectedIds = [];
+                updateDeleteButton();
             } catch (e) { showToast('error', 'Gagal menghapus.'); }
         }
 
@@ -635,7 +620,6 @@
         function closeImport() { document.getElementById('import-modal').classList.add('hidden'); }
 
         async function processMassImport() {
-            if (!window.currentUser || !window.isFirebaseReady) return;
             const text = document.getElementById('input-massal').value.trim();
             if (!text) return showToast('error', 'Kotak teks kosong!');
             const lines = text.split('\n');
@@ -647,8 +631,7 @@
                     if (name && name.trim()) {
                         lastNum++;
                         const docId = `QRB-${lastNum.toString().padStart(3, '0')}`;
-                        const docRef = window.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser, 'coupons', docId);
-                        batch.set(docRef, {
+                        batch.set(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'coupons', docId), {
                             name: name.trim(), category: (category || 'Umum').trim(), status: 'Belum Diambil', timestamp: null
                         });
                     }
@@ -658,7 +641,6 @@
         }
 
         async function saveMustahik() {
-            if (!window.currentUser || !window.isFirebaseReady) return;
             const id = document.getElementById('edit-id').value;
             const name = document.getElementById('input-name').value.trim();
             const category = document.getElementById('input-category').value.trim();
@@ -671,20 +653,14 @@
                     docId = `QRB-${(lastNum + 1).toString().padStart(3, '0')}`;
                     data.status = "Belum Diambil"; data.timestamp = null;
                 }
-                const docRef = window.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser, 'coupons', docId);
-                await window.setDoc(docRef, data, { merge: true });
+                await window.setDoc(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'coupons', docId), data, { merge: true });
                 showToast('success', 'Berhasil disimpan.'); closeForm();
             } catch (e) { showToast('error', 'Gagal menyimpan.'); }
         }
 
         async function deleteMustahik(id) {
-            if (!window.currentUser || !window.isFirebaseReady) return;
             if (!confirm(`Hapus ${id}?`)) return;
-            try {
-                const docRef = window.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser, 'coupons', id);
-                await window.deleteDoc(docRef);
-                showToast('success', 'Terhapus.');
-            } catch (e) { showToast('error', 'Gagal.'); }
+            try { await window.deleteDoc(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'coupons', id)); showToast('success', 'Terhapus.'); } catch (e) { showToast('error', 'Gagal.'); }
         }
 
         function exportData() {
@@ -692,7 +668,7 @@
             let csv = "ID,Nama,Kategori,Status,Waktu\n" + rows.map(e => e.join(",")).join("\n");
             const link = document.createElement("a");
             link.href = encodeURI("data:text/csv;charset=utf-8," + csv);
-            link.download = `Laporan_Kurban_${window.currentUser}.csv`; link.click();
+            link.download = "Laporan_Kurban.csv"; link.click();
         }
 
         async function printAllCoupons() {
@@ -725,15 +701,13 @@
         }
 
         async function processKlaim(id) {
-            if (!window.currentUser || !window.isFirebaseReady) return;
             const c = window.coupons.find(x => x.id.toUpperCase() === id.toUpperCase());
             if (!c) return showToast('error', 'KUPON TIDAK VALID');
             if (c.status === 'Sudah Diambil') return showToast('error', 'SUDAH DIAMBIL');
             const now = new Date();
             const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
             try {
-                const docRef = window.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser, 'coupons', c.id);
-                await window.updateDoc(docRef, { status: 'Sudah Diambil', timestamp: timeStr });
+                await window.updateDoc(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'coupons', c.id), { status: 'Sudah Diambil', timestamp: timeStr });
                 showToast('success', `BERHASIL: ${c.name}`);
                 stopScanner();
             } catch (e) { showToast('error', 'Gagal Klaim'); }
