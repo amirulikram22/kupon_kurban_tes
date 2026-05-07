@@ -41,7 +41,9 @@
         window.currentUser = null; 
         window.coupons = [];
         window.unsubscribeSync = null;
+        window.isFirebaseReady = false;
 
+        // Fungsi Inisialisasi Auth (MANDATORY RULE 3)
         const initAuth = async () => {
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -55,13 +57,29 @@
         };
 
         onAuthStateChanged(auth, (user) => {
-            // Auth dasar Firebase selesai, tapi kita tunggu login username
-            console.log("Firebase Auth Ready");
+            if (user) {
+                window.isFirebaseReady = true;
+                console.log("Firebase Auth Ready:", user.uid);
+            }
         });
 
         initAuth();
 
-        window.startDataSync = function(username) {
+        // Helper untuk menunggu Autentikasi sebelum akses Firestore
+        window.ensureAuth = () => {
+            return new Promise((resolve) => {
+                if (window.isFirebaseReady) return resolve();
+                const interval = setInterval(() => {
+                    if (window.isFirebaseReady) {
+                        clearInterval(interval);
+                        resolve();
+                    }
+                }, 100);
+            });
+        };
+
+        window.startDataSync = async function(username) {
+            await window.ensureAuth();
             if (window.unsubscribeSync) window.unsubscribeSync();
             
             // Path Isolat: Data disimpan berdasarkan username masing-masing
@@ -79,6 +97,9 @@
             }, (error) => {
                 window.hideLoading();
                 console.error("Sync Error:", error);
+                if (error.code === 'permission-denied') {
+                    showToast('error', 'Izin Ditolak! Pastikan Firestore Rules sudah diatur.');
+                }
             });
         }
     </script>
@@ -361,7 +382,7 @@
     </div>
 
     <div id="qr-modal" class="fixed inset-0 z-[110] modal-overlay hidden flex-col items-center justify-center p-4 no-print">
-        <div class="bg-white rounded-[2.5rem] p-8 max-w-sm w-full text-center space-y-6 shadow-2xl modal-content">
+        <div class="bg-white rounded-[2.5rem] p-8 max-sm w-full text-center space-y-6 shadow-2xl modal-content">
             <h3 id="modal-name" class="text-2xl font-extrabold text-slate-800"></h3>
             <div id="qrcode-container" class="bg-white p-6 rounded-[2rem] inline-block mx-auto border-4 border-slate-50 shadow-inner"></div>
             <p id="modal-id" class="font-mono font-black text-3xl text-emerald-600 uppercase tracking-widest"></p>
@@ -407,6 +428,9 @@
             btn.disabled = true; btn.innerHTML = 'Memproses...';
 
             try {
+                // Pastikan Firebase Auth sudah terhubung secara anonim/token (RULE 3)
+                await window.ensureAuth();
+
                 // Selalu baca data dari PUBLIC untuk akses login
                 const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'access_codes', user);
                 if (authMode === 'login') {
@@ -435,7 +459,9 @@
                     }
                 }
             } catch (e) {
-                console.error(e); showToast('error', 'Kesalahan Sistem!'); resetBtn();
+                console.error(e); 
+                showToast('error', 'Kesalahan: ' + e.message); 
+                resetBtn();
             }
 
             function resetBtn() {
@@ -572,7 +598,7 @@
         }
 
         async function deleteSelectedMustahik() {
-            if (!window.currentUser) return;
+            if (!window.currentUser || !window.isFirebaseReady) return;
             if (window.selectedIds.length === 0 || !confirm(`Hapus ${window.selectedIds.length} data?`)) return;
             showToast('info', `Menghapus...`);
             try {
@@ -609,7 +635,7 @@
         function closeImport() { document.getElementById('import-modal').classList.add('hidden'); }
 
         async function processMassImport() {
-            if (!window.currentUser) return;
+            if (!window.currentUser || !window.isFirebaseReady) return;
             const text = document.getElementById('input-massal').value.trim();
             if (!text) return showToast('error', 'Kotak teks kosong!');
             const lines = text.split('\n');
@@ -632,7 +658,7 @@
         }
 
         async function saveMustahik() {
-            if (!window.currentUser) return;
+            if (!window.currentUser || !window.isFirebaseReady) return;
             const id = document.getElementById('edit-id').value;
             const name = document.getElementById('input-name').value.trim();
             const category = document.getElementById('input-category').value.trim();
@@ -652,7 +678,7 @@
         }
 
         async function deleteMustahik(id) {
-            if (!window.currentUser) return;
+            if (!window.currentUser || !window.isFirebaseReady) return;
             if (!confirm(`Hapus ${id}?`)) return;
             try {
                 const docRef = window.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser, 'coupons', id);
@@ -699,7 +725,7 @@
         }
 
         async function processKlaim(id) {
-            if (!window.currentUser) return;
+            if (!window.currentUser || !window.isFirebaseReady) return;
             const c = window.coupons.find(x => x.id.toUpperCase() === id.toUpperCase());
             if (!c) return showToast('error', 'KUPON TIDAK VALID');
             if (c.status === 'Sudah Diambil') return showToast('error', 'SUDAH DIAMBIL');
