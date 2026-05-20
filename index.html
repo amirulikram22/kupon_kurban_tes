@@ -586,28 +586,13 @@
             btn.disabled = true;
 
             try {
-                // Perbaikan: Mencegah error "Race Condition" dari Autofill FaceID iPhone & Samsung Pass
-                // Sistem akan menunggu sejenak hingga Firebase siap sebelum menarik data.
-                if (!window.db || !window.collection) {
-                    await new Promise(r => setTimeout(r, 1500));
-                    if (!window.db) throw new Error("Koneksi lambat, coba lagi.");
-                }
-                
-                // Perbaikan KHUSUS iPhone/Samsung: Memaksa autentikasi saat tombol ditekan
-                // untuk menembus blokir ITP (Intelligent Tracking Prevention) Safari/Samsung
-                if (window.auth && !window.auth.currentUser && window.signInAnonymously) {
-                    try { await window.signInAnonymously(window.auth); } catch (e) {}
-                }
-
-                let authAttempts = 0;
-                while (window.auth && !window.auth.currentUser && authAttempts < 6) {
+                // [PERBAIKAN]: Menunggu Firebase siap.
+                let waitTime = 0;
+                while ((!window.db || !window.getDocs) && waitTime < 10) {
                     await new Promise(r => setTimeout(r, 500));
-                    authAttempts++;
+                    waitTime++;
                 }
-
-                if (window.auth && !window.auth.currentUser) {
-                    throw new Error("Matikan 'Cegah Pelacakan' (Prevent Cross-Site Tracking) di pengaturan browser HP Anda.");
-                }
+                if (!window.db || !window.getDocs) throw new Error("Sistem terblokir browser. Muat ulang halaman.");
 
                 // 1. Cek di Whitelist
                 const whitelistRef = window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'whitelist');
@@ -662,27 +647,15 @@
             btn.disabled = true;
 
             try {
-                // Perbaikan: Mencegah error "Race Condition" dari Autofill FaceID iPhone & Samsung Pass
-                // Sistem akan menunggu sejenak hingga Firebase siap sebelum menarik data.
-                if (!window.db || !window.collection) {
-                    await new Promise(r => setTimeout(r, 1500));
-                    if (!window.db) throw new Error("Koneksi lambat, coba lagi.");
-                }
-                
-                // Perbaikan KHUSUS iPhone/Samsung: Memaksa autentikasi saat tombol ditekan
-                // untuk menembus blokir ITP (Intelligent Tracking Prevention) Safari/Samsung
-                if (window.auth && !window.auth.currentUser && window.signInAnonymously) {
-                    try { await window.signInAnonymously(window.auth); } catch (e) {}
-                }
-
-                let authAttempts = 0;
-                while (window.auth && !window.auth.currentUser && authAttempts < 6) {
+                // [PERBAIKAN]: Menunggu Firebase siap. 
+                // iPhone (Safari) dan Samsung Internet sering menunda pemuatan script 'module'
+                let waitTime = 0;
+                while ((!window.db || !window.getDocs) && waitTime < 10) {
                     await new Promise(r => setTimeout(r, 500));
-                    authAttempts++;
+                    waitTime++;
                 }
-
-                if (window.auth && !window.auth.currentUser) {
-                    throw new Error("Matikan 'Cegah Pelacakan' (Prevent Cross-Site Tracking) di pengaturan browser HP Anda.");
+                if (!window.db || !window.getDocs) {
+                    throw new Error("Sistem belum siap. Pastikan koneksi stabil dan muat ulang halaman.");
                 }
 
                 const adminsRef = window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'admins');
