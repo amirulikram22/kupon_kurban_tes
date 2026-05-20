@@ -3,21 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>UDHIYAH - Manajemen Kurban Digital</title>
-    <!-- Tailwind CSS -->
+    <title>KuponKu - Aplikasi Manajemen Kurban</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- HTML5 QR Code Scanner -->
     <script src="https://unpkg.com/html5-qrcode"></script>
-    <!-- QRCode Generator Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
-    <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, onSnapshot, updateDoc, setDoc, deleteDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, doc, onSnapshot, updateDoc, setDoc, deleteDoc, getDocs, writeBatch, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAhFsT9cgzaNFdfYA5i3HKiROEbBXd5ROw",
@@ -32,7 +28,9 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'kupon-kurban-1447-h';
+        
+        // PERBAIKAN UTAMA: Mengunci appId agar sama persis dengan nama dokumen manual di database Anda
+        const appId = 'kupon-kurban-1447-h';
 
         window.db = db;
         window.auth = auth;
@@ -41,9 +39,24 @@
         window.doc = doc;
         window.setDoc = setDoc;
         window.deleteDoc = deleteDoc;
-        window.getDocs = getDocs;
-        window.collection = collection;
         window.writeBatch = writeBatch;
+        window.collection = collection; // Diperbaiki agar sistem bisa membaca database koleksi
+        window.getDocs = getDocs; // Diekspor untuk verifikasi login
+        window.query = query;
+        window.where = where;
+        window.signInAnonymously = signInAnonymously;
+        window.loggedInEmail = "";
+
+        // Default appConfig sebelum sync
+        window.appConfig = { 
+            lembaga: 'MASJID SYAHAH ABDUL ALI AL-UTAIBI', 
+            tahun: '1447 H/2026 M', 
+            prefix: 'SYH',
+            tanggal: 'Rabu, 10 Zulhijah 1447 H/27 Mei 2026',
+            jam: '14.00 sampai 17.00',
+            tempat: 'Ponpes Nurul Ilmi, Jl. H. M. Riva’i, Desa Manggul, Lahat',
+            catatan: 'Penting: Harap membawa kupon ini pada saat pengambilan daging kurban.' 
+        };
 
         const initAuth = async () => {
             try {
@@ -69,21 +82,48 @@
 
         initAuth();
 
-        function startDataSync() {
+        window.startCouponSync = () => {
             const collectionRef = collection(db, 'artifacts', appId, 'public', 'data', 'coupons');
+            const q = query(collectionRef, where('createdBy', '==', window.loggedInEmail));
             
-            onSnapshot(collectionRef, (snapshot) => {
+            onSnapshot(q, (snapshot) => {
                 const updatedCoupons = [];
                 snapshot.forEach((doc) => {
                     updatedCoupons.push({ id: doc.id, ...doc.data() });
                 });
-                
                 window.coupons = updatedCoupons;
-                window.hideLoading();
-                window.refreshUI();
+                if(window.hideLoading) window.hideLoading();
+                if(window.refreshUI) window.refreshUI();
             }, (error) => {
-                window.hideLoading();
+                if(window.hideLoading) window.hideLoading();
                 console.error("Sync Error:", error);
+            });
+        };
+
+        function startDataSync() {
+            // Sinkronisasi Pengaturan Desain Kupon
+            const configRef = doc(db, 'artifacts', appId, 'public', 'config');
+            onSnapshot(configRef, (snapshot) => {
+                if (snapshot.exists()) {
+                    window.appConfig = { ...window.appConfig, ...snapshot.data() };
+                }
+                const elLembaga = document.getElementById('conf-lembaga');
+                const elTahun = document.getElementById('conf-tahun');
+                const elPrefix = document.getElementById('conf-prefix');
+                const elTanggal = document.getElementById('conf-tanggal');
+                const elJam = document.getElementById('conf-jam');
+                const elTempat = document.getElementById('conf-tempat');
+                const elCatatan = document.getElementById('conf-catatan');
+                
+                if(elLembaga) elLembaga.value = window.appConfig.lembaga || '';
+                if(elTahun) elTahun.value = window.appConfig.tahun || '';
+                if(elPrefix) elPrefix.value = window.appConfig.prefix || '';
+                if(elTanggal) elTanggal.value = window.appConfig.tanggal || '';
+                if(elJam) elJam.value = window.appConfig.jam || '';
+                if(elTempat) elTempat.value = window.appConfig.tempat || '';
+                if(elCatatan) elCatatan.value = window.appConfig.catatan || '';
+                
+                if(!window.loggedInEmail && window.hideLoading) window.hideLoading();
             });
         }
     </script>
@@ -92,6 +132,23 @@
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         
         :root { --app-radius: 2.5rem; }
+        
+        .bg-radial-app {
+            background-color: #eff6ff;
+            background-image: 
+                radial-gradient(circle at 100% 0%, #dbeafe 0%, transparent 50%),
+                radial-gradient(circle at 0% 100%, #fffbeb 0%, transparent 50%);
+            background-attachment: fixed;
+        }
+
+        .bg-glass {
+            background-color: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+        }
+
         body { font-family: 'Plus Jakarta Sans', sans-serif; -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
         @keyframes scan-line { 0% { top: 0%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
         .animate-scan-line { position: absolute; animation: scan-line 2s linear infinite; }
@@ -99,307 +156,371 @@
         .tab-content { display: none; animation: tabFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
         .tab-content.active { display: block; }
         @keyframes tabFadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        #loading-screen { background: #ffffff; transition: opacity 0.5s ease, visibility 0.5s ease; }
+        
+        #loading-screen { background: rgba(255,255,255,0.9); backdrop-filter: blur(8px); transition: opacity 0.5s ease, visibility 0.5s ease; }
+        
         .nav-item { transition: all 0.3s ease; position: relative; }
-        .nav-item.active { color: #059669; }
-        .nav-indicator { position: absolute; bottom: -2px; width: 4px; height: 4px; background-color: #059669; border-radius: 50%; opacity: 0; transition: opacity 0.3s ease; }
+        .nav-item.active { color: #1e40af; } 
+        .nav-indicator { position: absolute; bottom: -2px; width: 4px; height: 4px; background-color: #1e40af; border-radius: 50%; opacity: 0; transition: opacity 0.3s ease; }
         .nav-item.active .nav-indicator { opacity: 1; }
         
-        /* Area Cetak Default (Sembunyi) */
-        #print-area { 
-            position: absolute; 
-            left: -9999px; 
-            top: 0; 
-            width: 100%; 
-            height: auto;
-            visibility: hidden;
-        }
+        #print-area { position: absolute; left: -9999px; top: 0; width: 100%; height: auto; visibility: hidden; }
         
         @media print {
-            nav, header, button, .no-print, #toast, .modal-backdrop, main, #loading-screen, .modal-overlay, #login-screen { 
-                display: none !important; 
-            }
-            #print-area { 
-                display: block !important; 
-                position: static !important; 
-                visibility: visible !important; 
-                height: auto !important; 
-                width: 100% !important;
-                z-index: 99999 !important; 
-            }
-            .coupon-card { 
-                border: 2px solid #000; 
-                margin-bottom: 20px; 
-                padding: 15px; 
-                display: flex !important; 
-                align-items: center; 
-                gap: 20px; 
-                page-break-inside: avoid; 
-                break-inside: avoid;
-            }
+            nav, header, button, .no-print, #toast, .modal-backdrop, main, #loading-screen, #welcome-screen, .modal-overlay { display: none !important; }
+            #print-area { display: block !important; position: static !important; visibility: visible !important; height: auto !important; width: 100% !important; z-index: 99999 !important; }
+            .coupon-card { border: 2px solid #000; margin-bottom: 20px; padding: 15px; display: flex !important; align-items: center; gap: 20px; page-break-inside: avoid; break-inside: avoid; }
             body { background: white !important; }
         }
 
-        .modal-overlay { background-color: rgba(0, 0, 0, 0.4); backdrop-filter: blur(8px); }
+        .modal-overlay { background-color: rgba(30, 41, 59, 0.4); backdrop-filter: blur(8px); }
         .modal-content { max-height: 85vh; overflow-y: auto; scrollbar-width: none; }
         .modal-content::-webkit-scrollbar { display: none; }
-        input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: #059669; border-radius: 0.5rem; cursor: pointer; }
+        input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: #1e40af; border-radius: 0.5rem; cursor: pointer; } 
         
-        #reader { width: 100% !important; border: none !important; border-radius: 2rem; overflow: hidden; }
-        #reader video { object-fit: cover !important; width: 100% !important; height: 100% !important; border-radius: 2rem; }
-
-        /* Login Screen Styling */
-        #login-screen {
-            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-            z-index: 300;
-        }
-        .login-card {
-            animation: loginSlideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        @keyframes loginSlideUp {
-            from { opacity: 0; transform: translateY(40px) scale(0.95); }
-            to { opacity: 1; transform: translateY(0) scale(1); }
-        }
+        #reader { width: 100% !important; border: none !important; border-radius: 1.5rem; overflow: hidden; }
+        #reader video { object-fit: cover !important; width: 100% !important; height: 100% !important; border-radius: 1.5rem; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900 min-h-screen select-none">
+<body class="bg-radial-app text-slate-800 min-h-screen select-none">
 
-    <!-- Screen Login -->
-    <div id="login-screen" class="fixed inset-0 flex items-center justify-center p-6 overflow-y-auto">
-        <div class="login-card max-w-sm w-full bg-white rounded-[3rem] p-10 shadow-2xl border border-slate-100 text-center space-y-10">
-            <div class="space-y-4">
-                <div class="w-24 h-24 bg-emerald-600 rounded-[2.5rem] flex items-center justify-center mx-auto shadow-xl shadow-emerald-200">
-                    <i data-lucide="ticket" class="text-white w-12 h-12"></i>
+    <div id="welcome-screen" class="fixed top-0 left-0 w-full h-full overflow-y-auto z-[250] bg-radial-app transition-opacity duration-700">
+        <div class="min-h-full flex flex-col items-center justify-center py-10 px-4">
+            
+            <div class="w-24 h-24 sm:w-28 sm:h-28 bg-white rounded-[2rem] shadow-[0_10px_30px_rgba(0,0,0,0.05)] flex items-center justify-center mb-6 relative z-10 border border-slate-50">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-12 h-12 text-blue-800">
+                    <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"></path>
+                    <path d="M12 5v14" stroke-dasharray="4 4"></path>
+                </svg>
+            </div>
+
+            <div class="border border-blue-200/80 bg-blue-50 text-blue-800 px-4 py-1.5 rounded-full text-[9px] font-black tracking-[0.15em] uppercase mb-4 shadow-sm text-center">
+                Sistem Manajemen Kupon Kurban
+            </div>
+
+            <h1 class="text-4xl sm:text-5xl font-black text-blue-800 tracking-tighter mb-2 text-center">KUPONKU</h1>
+            
+            <p class="text-[9px] sm:text-[10px] font-extrabold text-slate-500 uppercase tracking-[0.25em] mb-10 text-center">
+                "Kupon Tercatat, Distribusi Akurat."
+            </p>
+
+            <div class="bg-white/90 backdrop-blur-2xl p-6 sm:p-8 rounded-3xl shadow-[0_20px_40px_rgb(0,0,0,0.03)] border border-white max-w-[340px] sm:max-w-sm w-full">
+                <div class="space-y-4 mb-6">
+                    <div id="name-field-container" class="hidden">
+                        <label class="block text-[11px] font-extrabold text-slate-700 mb-1.5 ml-1">Nama Lengkap</label>
+                        <div class="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white flex items-center gap-3 text-slate-800 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all shadow-sm">
+                            <i data-lucide="user" class="w-4 h-4 text-slate-400"></i>
+                            <input type="text" id="auth-name" class="w-full bg-transparent outline-none text-sm font-bold placeholder-slate-400" placeholder="Nama Lengkap" autocomplete="off">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-[11px] font-extrabold text-slate-700 mb-1.5 ml-1">Email Akses</label>
+                        <div class="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white flex items-center gap-3 text-slate-800 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all shadow-sm">
+                            <i data-lucide="mail" class="w-4 h-4 text-slate-400"></i>
+                            <input type="email" id="login-email" class="w-full bg-transparent outline-none text-sm font-bold placeholder-slate-400" placeholder="namapengguna@domain.com" autocomplete="off">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-[11px] font-extrabold text-slate-700 mb-1.5 ml-1">Password</label>
+                        <div class="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white flex items-center gap-3 text-slate-800 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all shadow-sm">
+                            <i data-lucide="lock" class="w-4 h-4 text-slate-400 shrink-0"></i>
+                            <input type="password" id="login-password" class="w-full bg-transparent outline-none text-sm font-bold placeholder-slate-400" placeholder="••••••••" autocomplete="off">
+                            <button type="button" onclick="togglePasswordVisibility()" class="text-slate-400 hover:text-blue-600 focus:outline-none shrink-0 transition-colors" title="Lihat/Sembunyikan Password">
+                                <i data-lucide="eye" id="eye-icon" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="btn-auth" onclick="handleAuth()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 sm:py-3.5 rounded-xl font-bold text-sm shadow-[0_8px_20px_rgba(37,99,235,0.25)] active:scale-95 transition-all flex items-center justify-center gap-2">
+                    Masuk Sistem <i data-lucide="log-in" class="w-4 h-4"></i>
+                </button>
+                
+                <div class="mt-5 text-center">
+                    <a href="#" onclick="toggleAuthMode()" id="auth-toggle-link" class="text-[10px] sm:text-[11px] font-bold text-blue-600 hover:text-blue-800 transition-colors">Punya akses whitelist? Daftar di sini</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading-screen" class="fixed inset-0 z-[200] flex flex-col items-center justify-center">
+        <div class="relative w-16 h-16">
+            <div class="absolute inset-0 border-4 border-blue-100 border-t-blue-800 rounded-full animate-spin"></div>
+            <div class="absolute inset-0 flex items-center justify-center p-3">
+                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full text-blue-800 opacity-80">
+                    <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"></path>
+                    <path d="M12 5v14" stroke-dasharray="4 4"></path>
+                </svg>
+            </div>
+        </div>
+        <h2 class="mt-4 text-lg font-extrabold text-blue-800 tracking-tight">KuponKu</h2>
+        <p class="text-slate-500 text-[11px] sm:text-xs font-medium animate-pulse text-center px-4">Sinkronisasi Cloud...</p>
+    </div>
+
+    <nav class="fixed bottom-0 left-0 right-0 bg-white/85 backdrop-blur-xl border-t border-white/60 z-[100] no-print safe-bottom shadow-[0_-10px_40px_rgba(0,0,0,0.03)]">
+        <div class="max-w-md mx-auto px-4 sm:px-8 h-16 sm:h-18 flex items-center justify-between">
+            <button onclick="setActiveTab('dashboard')" class="nav-item group flex flex-col items-center gap-1 active" data-tab="dashboard">
+                <i data-lucide="layout-dashboard" class="w-5 h-5 sm:w-6 sm:h-6 text-slate-400 group-[.active]:text-blue-800 transition-colors"></i>
+                <span class="text-[9px] sm:text-[10px] font-bold uppercase tracking-tight text-slate-400 group-[.active]:text-blue-800 transition-colors">Home</span>
+                <div class="nav-indicator"></div>
+            </button>
+            <button onclick="setActiveTab('list')" class="nav-item group flex flex-col items-center gap-1" data-tab="list">
+                <i data-lucide="users" class="w-5 h-5 sm:w-6 sm:h-6 text-slate-400 group-[.active]:text-blue-800 transition-colors"></i>
+                <span class="text-[9px] sm:text-[10px] font-bold uppercase tracking-tight text-slate-400 group-[.active]:text-blue-800 transition-colors">Data</span>
+                <div class="nav-indicator"></div>
+            </button>
+            <button onclick="setActiveTab('checkin')" class="nav-item group flex flex-col items-center gap-1" data-tab="checkin">
+                <i data-lucide="qr-code" class="w-5 h-5 sm:w-6 sm:h-6 text-slate-400 group-[.active]:text-blue-800 transition-colors"></i>
+                <span class="text-[9px] sm:text-[10px] font-bold uppercase tracking-tight text-slate-400 group-[.active]:text-blue-800 transition-colors">Klaim</span>
+                <div class="nav-indicator"></div>
+            </button>
+            <button onclick="setActiveTab('settings')" class="nav-item group flex flex-col items-center gap-1" data-tab="settings">
+                <i data-lucide="settings" class="w-5 h-5 sm:w-6 sm:h-6 text-slate-400 group-[.active]:text-blue-800 transition-colors"></i>
+                <span class="text-[9px] sm:text-[10px] font-bold uppercase tracking-tight text-slate-400 group-[.active]:text-blue-800 transition-colors">Setting</span>
+                <div class="nav-indicator"></div>
+            </button>
+        </div>
+    </nav>
+
+    <div id="toast" class="fixed top-8 left-1/2 -translate-x-1/2 z-[210] px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 transition-all duration-500 opacity-0 pointer-events-none scale-90 border bg-white/95 backdrop-blur-md">
+        <i id="toast-icon" data-lucide="check-circle" class="w-4 h-4"></i>
+        <span id="toast-text" class="font-bold text-xs sm:text-sm text-slate-800"></span>
+    </div>
+
+    <main class="pt-6 sm:pt-8 pb-28 sm:pb-32 px-4 sm:px-6 max-w-5xl mx-auto">
+        <header class="flex justify-between items-center mb-6 sm:mb-8">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 sm:w-12 sm:h-12 bg-white/50 backdrop-blur border border-white/60 p-2 rounded-xl shadow-sm flex items-center justify-center shrink-0">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full text-blue-800">
+                        <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"></path>
+                        <path d="M12 5v14" stroke-dasharray="4 4"></path>
+                    </svg>
                 </div>
                 <div>
-                    <h1 class="text-4xl font-black text-slate-900 tracking-tighter uppercase italic">UDHIYAH</h1>
-                    <p class="text-slate-400 font-bold text-xs uppercase tracking-[0.2em] mt-1">Manajemen Kurban Digital</p>
+                    <h2 id="page-title" class="text-xl sm:text-2xl font-black tracking-tight text-blue-800 leading-none uppercase italic drop-shadow-sm">Dashboard</h2>
+                    <p id="user-greeting" class="text-[10px] sm:text-xs font-bold text-slate-500 mt-0.5 hidden">Ahlan, <span id="display-username" class="text-blue-600"></span></p>
+                </div>
+            </div>
+            
+            <button onclick="showWelcomeScreen()" class="p-2.5 sm:p-3 bg-white/60 backdrop-blur border border-white/60 rounded-xl shadow-sm hover:bg-blue-50 active:scale-95 transition-all text-blue-800" title="Keluar">
+                <i data-lucide="log-out" class="w-4 h-4 sm:w-5 sm:h-5"></i>
+            </button>
+        </header>
+
+        <section id="dashboard" class="tab-content active space-y-5 sm:space-y-6">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="bg-glass p-5 sm:p-6 rounded-3xl relative overflow-hidden transition-all hover:-translate-y-1">
+                    <p class="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Total Mustahik</p>
+                    <h3 id="stat-total" class="text-3xl sm:text-4xl font-black mt-1.5 text-blue-800 tracking-tighter">0</h3>
+                    <div class="absolute bottom-0 left-0 h-1 w-full bg-blue-500/20"></div>
+                </div>
+                <div class="bg-glass p-5 sm:p-6 rounded-3xl relative overflow-hidden transition-all hover:-translate-y-1">
+                    <p class="text-emerald-500/80 text-[10px] font-bold uppercase tracking-widest">Diambil</p>
+                    <h3 id="stat-claimed" class="text-3xl sm:text-4xl font-black mt-1.5 text-emerald-600 tracking-tighter">0</h3>
+                    <div id="progress-claimed" class="absolute bottom-0 left-0 h-1 bg-emerald-500 transition-all duration-1000 shadow-[0_0_10px_rgba(16,185,129,0.5)]" style="width: 0%"></div>
+                </div>
+                <div class="bg-glass p-5 sm:p-6 rounded-3xl relative overflow-hidden transition-all hover:-translate-y-1">
+                    <p class="text-orange-500/80 text-[10px] font-bold uppercase tracking-widest">Sisa</p>
+                    <h3 id="stat-pending" class="text-3xl sm:text-4xl font-black mt-1.5 text-orange-500 tracking-tighter">0</h3>
+                    <div id="progress-pending" class="absolute bottom-0 left-0 h-1 bg-orange-500 transition-all duration-1000 shadow-[0_0_10px_rgba(249,115,22,0.5)]" style="width: 0%"></div>
                 </div>
             </div>
 
-            <div class="space-y-4">
-                <div class="text-left">
-                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 mb-2 block">Kode Akses Panitia</label>
-                    <input id="login-pass" type="password" placeholder="••••••••" class="w-full px-8 py-5 rounded-3xl bg-slate-50 border-none outline-none font-bold text-center text-lg focus:ring-4 focus:ring-emerald-500/10 transition-all">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
+                <div class="bg-glass rounded-3xl p-5 sm:p-6">
+                    <h4 class="font-black text-base sm:text-lg mb-4 flex items-center gap-2 text-blue-800 uppercase italic">
+                        <i data-lucide="activity" class="text-blue-500 w-4 h-4"></i> Aktivitas Terakhir
+                    </h4>
+                    <div id="recent-activity" class="space-y-3"></div>
                 </div>
-                <button id="btn-login-submit" onclick="handleLogin()" class="w-full bg-slate-900 text-white py-6 rounded-3xl font-black text-lg shadow-xl active:scale-95 transition-all">MASUK SISTEM <i data-lucide="arrow-right" class="inline ml-2 w-5 h-5"></i></button>
-            </div>
-
-            <div class="pt-6 border-t border-slate-50">
-                <p class="text-[10px] text-slate-300 font-bold uppercase tracking-widest leading-relaxed">
-                    Masjid An-Nur • 1447 H<br>
-                    © 2024 Panitia Kurban
-                </p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Screen Pemuatan (Tampil setelah login) -->
-    <div id="loading-screen" class="fixed inset-0 z-[200] flex flex-col items-center justify-center hidden">
-        <div class="relative">
-            <div class="w-20 h-20 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin"></div>
-            <div class="absolute inset-0 flex items-center justify-center">
-                <i data-lucide="ticket" class="text-emerald-600 w-8 h-8"></i>
-            </div>
-        </div>
-        <h2 class="mt-6 text-xl font-extrabold text-slate-800 tracking-tight">UDHIYAH</h2>
-        <p class="text-slate-400 text-sm font-medium animate-pulse text-center px-4">Sinkronisasi Cloud...</p>
-    </div>
-
-    <!-- Aplikasi Utama -->
-    <div id="main-app" class="hidden">
-        <!-- Navigasi Bawah -->
-        <nav class="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-slate-100 z-[100] no-print safe-bottom">
-            <div class="max-w-md mx-auto px-10 h-20 flex items-center justify-between">
-                <button onclick="setActiveTab('dashboard')" class="nav-item group flex flex-col items-center gap-1" data-tab="dashboard">
-                    <i data-lucide="layout-dashboard" class="w-6 h-6 text-slate-400 group-[.active]:text-emerald-600"></i>
-                    <span class="text-[10px] font-black uppercase tracking-tighter text-slate-400 group-[.active]:text-emerald-600">Home</span>
-                    <div class="nav-indicator"></div>
-                </button>
-                <button onclick="setActiveTab('list')" class="nav-item group flex flex-col items-center gap-1" data-tab="list">
-                    <i data-lucide="users" class="w-6 h-6 text-slate-400 group-[.active]:text-emerald-600"></i>
-                    <span class="text-[10px] font-black uppercase tracking-tighter text-slate-400 group-[.active]:text-emerald-600">Data</span>
-                    <div class="nav-indicator"></div>
-                </button>
-                <button onclick="setActiveTab('checkin')" class="nav-item group flex flex-col items-center gap-1" data-tab="checkin">
-                    <i data-lucide="qr-code" class="w-6 h-6 text-slate-400 group-[.active]:text-emerald-600"></i>
-                    <span class="text-[10px] font-black uppercase tracking-tighter text-slate-400 group-[.active]:text-emerald-600">Klaim</span>
-                    <div class="nav-indicator"></div>
-                </button>
-            </div>
-        </nav>
-
-        <!-- Notifikasi Toast -->
-        <div id="toast" class="fixed top-8 left-1/2 -translate-x-1/2 z-[210] px-6 py-4 rounded-full shadow-2xl flex items-center gap-3 transition-all duration-500 opacity-0 pointer-events-none scale-90 border-2 no-print bg-white/95 backdrop-blur-md">
-            <i id="toast-icon" data-lucide="check-circle" class="w-5 h-5"></i>
-            <span id="toast-text" class="font-bold text-sm text-slate-800"></span>
-        </div>
-
-        <main class="pt-10 pb-32 px-6 max-w-5xl mx-auto">
-            <header class="flex justify-between items-center mb-10">
-                <div class="flex items-center gap-3">
-                    <div class="bg-emerald-600 p-2 rounded-xl text-white shadow-lg shadow-emerald-100">
-                        <i data-lucide="ticket" class="w-5 h-5"></i>
+                
+                <div class="bg-gradient-to-br from-blue-800 to-slate-900 rounded-3xl p-6 sm:p-8 text-white flex flex-col justify-between shadow-xl shadow-blue-900/10 relative overflow-hidden group">
+                    <div class="absolute inset-0 bg-white/5 backdrop-blur-3xl"></div>
+                    <div class="relative z-10">
+                       <h4 class="text-blue-300 font-bold uppercase tracking-widest text-[9px] mb-2">Export & Data</h4>
+                       <p class="text-lg sm:text-xl font-bold leading-tight">Kelola pelaporan atau cetak kupon fisik.</p>
                     </div>
-                    <h2 id="page-title" class="text-3xl font-black tracking-tight text-slate-800 leading-none uppercase italic">Dashboard</h2>
-                </div>
-                <button onclick="handleLogout()" class="p-4 bg-slate-100 rounded-2xl text-slate-400 active:scale-90 transition-all no-print">
-                    <i data-lucide="log-out" class="w-5 h-5"></i>
-                </button>
-            </header>
-
-            <!-- Tab Dashboard -->
-            <section id="dashboard" class="tab-content active space-y-8">
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                    <div class="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden">
-                        <p class="text-slate-400 text-[10px] font-black uppercase tracking-widest">Total Mustahik</p>
-                        <h3 id="stat-total" class="text-5xl font-black mt-2 text-slate-800 tracking-tighter">0</h3>
-                        <div class="absolute bottom-0 left-0 h-1.5 w-full bg-blue-500"></div>
-                    </div>
-                    <div class="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden">
-                        <p class="text-emerald-500/60 text-[10px] font-black uppercase tracking-widest">Diambil</p>
-                        <h3 id="stat-claimed" class="text-5xl font-black mt-2 text-emerald-600 tracking-tighter">0</h3>
-                        <div id="progress-claimed" class="absolute bottom-0 left-0 h-1.5 bg-emerald-500 transition-all duration-1000" style="width: 0%"></div>
-                    </div>
-                    <div class="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden">
-                        <p class="text-orange-500/60 text-[10px] font-black uppercase tracking-widest">Sisa</p>
-                        <h3 id="stat-pending" class="text-5xl font-black mt-2 text-orange-500 tracking-tighter">0</h3>
-                        <div id="progress-pending" class="absolute bottom-0 left-0 h-1.5 bg-orange-500 transition-all duration-1000" style="width: 0%"></div>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <div class="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm">
-                        <h4 class="font-black text-xl mb-6 flex items-center gap-3 text-slate-800 uppercase italic">
-                            <i data-lucide="activity" class="text-emerald-600 w-5 h-5"></i> Aktivitas Terakhir
-                        </h4>
-                        <div id="recent-activity" class="space-y-4"></div>
-                    </div>
-                    <div class="bg-slate-900 rounded-[2.5rem] p-10 text-white flex flex-col justify-between shadow-2xl relative overflow-hidden group">
-                        <div class="relative z-10">
-                           <h4 class="text-emerald-400 font-black uppercase tracking-[0.3em] text-[10px] mb-4">Export & Data</h4>
-                           <p class="text-2xl font-bold leading-tight">Kelola pelaporan atau cetak semua kupon fisik warga.</p>
-                        </div>
-                        <div class="flex flex-col gap-3 mt-10">
-                            <button onclick="printAllCoupons()" class="relative z-10 bg-white text-slate-900 font-black py-5 px-8 rounded-2xl active:scale-95 shadow-xl">PRINT SEMUA <i data-lucide="printer" class="inline ml-2"></i></button>
-                            <button onclick="exportData()" class="relative z-10 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 font-black py-4 px-8 rounded-2xl hover:bg-emerald-600 hover:text-white transition-all">UNDUH CSV <i data-lucide="download" class="inline ml-2"></i></button>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Tab Data List -->
-            <section id="list" class="tab-content space-y-6">
-                <div class="flex justify-between items-center px-2">
-                    <h3 class="text-xl font-black text-slate-800 uppercase italic">Data Mustahik</h3>
-                    <div class="flex gap-2">
-                        <button id="btn-delete-selected" onclick="deleteSelectedMustahik()" class="hidden bg-red-50 text-red-600 p-4 rounded-2xl shadow-lg active:scale-90 border border-red-200">
-                            <i data-lucide="trash-2" class="w-5 h-5"></i>
-                            <span id="selected-count" class="text-[10px] font-black uppercase ml-2">0</span>
+                    <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-6 sm:mt-8 relative z-10">
+                        <button onclick="printAllCoupons()" class="flex-1 bg-white text-blue-900 font-bold py-2.5 sm:py-3 px-4 rounded-xl active:scale-95 shadow-sm transition-transform text-xs sm:text-sm flex items-center justify-center">
+                            UNDUH PDF <i data-lucide="download" class="inline ml-2 w-4 h-4"></i>
                         </button>
-                        <button onclick="openImport()" class="bg-slate-800 text-white p-4 rounded-2xl shadow-lg active:scale-90"><i data-lucide="file-up" class="w-5 h-5"></i></button>
-                        <button onclick="openForm()" class="bg-emerald-600 text-white p-4 rounded-2xl shadow-lg active:scale-90"><i data-lucide="plus" class="w-6 h-6"></i></button>
+                        <button onclick="exportData()" class="flex-1 bg-blue-500/20 text-blue-100 border border-blue-400/30 font-bold py-2.5 sm:py-3 px-4 rounded-xl hover:bg-blue-600 transition-all text-xs sm:text-sm flex items-center justify-center">
+                            UNDUH CSV <i data-lucide="download" class="inline ml-2 w-4 h-4"></i>
+                        </button>
                     </div>
                 </div>
-
-                <div class="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm">
-                    <div class="relative w-full mb-8">
-                        <i data-lucide="search" class="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 w-5 h-5"></i>
-                        <input oninput="renderKuponList()" id="search-input" type="text" placeholder="Cari nama atau ID..." class="w-full pl-16 pr-8 py-5 rounded-3xl bg-slate-50 border-none font-bold">
-                    </div>
-                    <div id="category-filters" class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2 mb-4"></div>
-                    <div class="space-y-4 sm:hidden" id="kupon-mobile-list"></div>
-                    <div class="hidden sm:block overflow-x-auto rounded-3xl">
-                        <table class="w-full text-left">
-                            <thead>
-                                <tr class="text-slate-400 text-[10px] uppercase font-black tracking-widest border-b border-slate-50">
-                                    <th class="px-8 py-5 text-center"><input type="checkbox" id="checkbox-all" onchange="toggleSelectAll(this.checked)"></th>
-                                    <th class="px-4 py-5">ID</th>
-                                    <th class="px-8 py-5">Nama</th>
-                                    <th class="px-8 py-5 text-center">Kategori</th>
-                                    <th class="px-8 py-5 text-center">Status</th>
-                                    <th class="px-8 py-5 text-center">Aksi</th>
-                                </tr>
-                            </thead>
-                            <tbody id="kupon-table-body" class="divide-y divide-slate-50 text-sm"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Tab Klaim -->
-            <section id="checkin" class="tab-content space-y-6">
-                <div class="max-w-md mx-auto">
-                    <div id="scanner-view" class="hidden relative">
-                        <div class="bg-black rounded-[3rem] overflow-hidden shadow-2xl aspect-[4/5] relative border-[12px] border-white">
-                            <div id="reader" class="w-full h-full bg-slate-900"></div>
-                            <div class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-                                <div class="w-64 h-64 border-2 border-emerald-500/30 rounded-[2.5rem] relative">
-                                    <div class="absolute top-0 left-0 w-full h-1 bg-emerald-400 shadow-[0_0_20px_rgba(52,211,153,1)] animate-scan-line"></div>
-                                </div>
-                                <p id="scanner-status-text" class="mt-10 text-white font-black tracking-[0.2em] text-[9px] bg-emerald-600 px-6 py-3 rounded-full uppercase">Kamera Aktif</p>
-                            </div>
-                            <button onclick="switchCamera()" class="absolute top-6 left-6 p-4 bg-white/20 text-white rounded-full backdrop-blur-md active:scale-90"><i data-lucide="refresh-cw" class="w-6 h-6"></i></button>
-                            <button onclick="stopScanner()" class="absolute top-6 right-6 p-4 bg-white/20 text-white rounded-full backdrop-blur-md active:scale-90"><i data-lucide="x" class="w-6 h-6"></i></button>
-                        </div>
-                    </div>
-
-                    <div id="selection-view" class="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-2xl text-center space-y-10 animate-in slide-in-from-bottom-10">
-                        <div class="space-y-4">
-                            <div class="w-24 h-24 bg-emerald-50 text-emerald-600 rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 shadow-inner"><i data-lucide="qr-code" class="w-10 h-10"></i></div>
-                            <h3 class="text-3xl font-black text-slate-800 leading-tight">Konfirmasi Klaim</h3>
-                            <p class="text-slate-400 font-bold text-sm">Pindai kode QR pada kupon warga untuk verifikasi pengambilan daging.</p>
-                        </div>
-                        <button onclick="startScanner()" class="w-full bg-emerald-600 text-white py-6 rounded-3xl font-black text-lg shadow-2xl shadow-emerald-200 active:scale-95 transition-all">BUKA KAMERA <i data-lucide="camera" class="inline ml-2"></i></button>
-                        <div class="pt-8 border-t border-slate-50">
-                            <p class="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">Atau Input ID Manual</p>
-                            <div class="flex gap-2">
-                                <input id="manual-id-input" type="text" placeholder="QRB-001" class="flex-1 px-6 py-4 rounded-2xl bg-slate-50 font-black text-center text-lg uppercase">
-                                <button onclick="handleManualKlaim()" class="bg-slate-900 text-white px-6 rounded-2xl font-black active:scale-90"><i data-lucide="arrow-right" class="w-6 h-6"></i></button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-        </main>
-    </div>
-
-    <!-- Modals -->
-    <div id="form-modal" class="fixed inset-0 z-[150] modal-overlay hidden flex-col items-center justify-center p-4 no-print">
-        <div class="bg-white rounded-[2.5rem] p-8 max-sm w-full space-y-6 shadow-2xl modal-content">
-            <h3 id="form-title" class="text-2xl font-extrabold text-slate-800">Mustahik</h3>
-            <input type="hidden" id="edit-id">
-            <div class="space-y-4">
-                <input id="input-name" type="text" class="w-full px-6 py-4 rounded-2xl bg-slate-50 font-bold" placeholder="Nama Lengkap">
-                <input id="input-category" type="text" class="w-full px-6 py-4 rounded-2xl bg-slate-50 font-bold" placeholder="Kategori">
             </div>
-            <button onclick="saveMustahik()" class="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black active:scale-95 transition-all">SIMPAN DATA</button>
-            <button onclick="closeForm()" class="w-full py-2 text-slate-400 font-bold">Batal</button>
+        </section>
+
+        <section id="list" class="tab-content space-y-4 sm:space-y-5">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center px-1 gap-3">
+                <h3 class="text-lg sm:text-xl font-black text-blue-800 uppercase italic">Data Mustahik</h3>
+                <div class="flex gap-2 w-full sm:w-auto">
+                    <button id="btn-delete-selected" onclick="deleteSelectedMustahik()" class="hidden flex-1 sm:flex-none bg-red-50 text-red-600 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl shadow-sm active:scale-90 border border-red-200 transition-all">
+                        <div class="flex items-center justify-center gap-1.5">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            <span id="selected-count" class="text-[10px] font-bold uppercase">0</span>
+                        </div>
+                    </button>
+                    <button onclick="openImport()" class="flex-1 sm:flex-none bg-white border border-slate-200 text-slate-600 p-2 sm:p-2.5 rounded-xl shadow-sm active:scale-90 flex justify-center hover:bg-slate-50 transition-colors" title="Impor Massal"><i data-lucide="file-up" class="w-4 h-4 sm:w-5 sm:h-5"></i></button>
+                    <button onclick="openForm()" class="flex-1 sm:flex-none bg-blue-800 text-white p-2 sm:p-2.5 rounded-xl shadow-sm active:scale-90 flex justify-center hover:bg-blue-900 transition-colors" title="Tambah Data"><i data-lucide="plus" class="w-4 h-4 sm:w-5 sm:h-5"></i></button>
+                </div>
+            </div>
+
+            <div class="bg-glass rounded-3xl p-4 sm:p-6">
+                <div class="relative w-full mb-4 sm:mb-5">
+                    <i data-lucide="search" class="absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4"></i>
+                    <input oninput="renderKuponList()" id="search-input" type="text" placeholder="Cari nama atau ID..." class="w-full pl-10 sm:pl-12 pr-4 sm:pr-6 py-2.5 sm:py-3 rounded-xl bg-white/50 border border-white/50 font-semibold focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs sm:text-sm placeholder-slate-400 text-slate-800">
+                </div>
+                <div id="category-filters" class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 mb-3"></div>
+                
+                <div class="space-y-3 sm:hidden" id="kupon-mobile-list"></div>
+                
+                <div class="hidden sm:block overflow-x-auto rounded-2xl border border-white/50 bg-white/40">
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr class="text-slate-500 text-[9px] sm:text-[10px] uppercase font-bold tracking-widest border-b border-slate-200/50">
+                                <th class="px-4 py-3 sm:py-4 text-center w-12"><input type="checkbox" id="checkbox-all" onchange="toggleSelectAll(this.checked)"></th>
+                                <th class="px-4 py-3 sm:py-4">ID</th>
+                                <th class="px-6 py-3 sm:py-4">Nama</th>
+                                <th class="px-6 py-3 sm:py-4 text-center">Kategori</th>
+                                <th class="px-6 py-3 sm:py-4 text-center">Status</th>
+                                <th class="px-6 py-3 sm:py-4 text-center">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="kupon-table-body" class="divide-y divide-slate-200/50 text-xs sm:text-sm"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section id="checkin" class="tab-content space-y-5 sm:space-y-6">
+            <div class="max-w-sm mx-auto">
+                <div id="scanner-view" class="hidden relative">
+                    <div class="bg-blue-900 rounded-3xl overflow-hidden shadow-xl aspect-[4/5] relative border-[6px] sm:border-[8px] border-blue-50">
+                        <div id="reader" class="w-full h-full bg-slate-900"></div>
+                        <div class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
+                            <div class="w-48 h-48 sm:w-56 sm:h-56 border-2 border-blue-400/40 rounded-2xl relative">
+                                <div class="absolute top-0 left-0 w-full h-0.5 bg-blue-400 shadow-[0_0_15px_rgba(59,130,246,1)] animate-scan-line"></div>
+                            </div>
+                            <p id="scanner-status-text" class="mt-6 sm:mt-8 text-white font-bold tracking-[0.1em] text-[9px] bg-blue-800 px-4 py-2 rounded-lg uppercase shadow-md">Kamera Aktif</p>
+                        </div>
+                        <button onclick="switchCamera()" class="absolute top-3 left-3 sm:top-4 sm:left-4 p-2.5 sm:p-3 bg-black/40 text-white rounded-xl backdrop-blur-md active:scale-90 hover:bg-black/60 transition-colors"><i data-lucide="refresh-cw" class="w-4 h-4 sm:w-5 sm:h-5"></i></button>
+                        <button onclick="stopScanner()" class="absolute top-3 right-3 sm:top-4 sm:right-4 p-2.5 sm:p-3 bg-black/40 text-white rounded-xl backdrop-blur-md active:scale-90 hover:bg-black/60 transition-colors"><i data-lucide="x" class="w-4 h-4 sm:w-5 sm:h-5"></i></button>
+                    </div>
+                </div>
+
+                <div id="selection-view" class="bg-glass p-6 sm:p-8 rounded-3xl text-center space-y-6 sm:space-y-8 animate-in slide-in-from-bottom-10">
+                    <div class="space-y-3">
+                        <div class="w-16 h-16 sm:w-20 sm:h-20 bg-blue-100 text-blue-800 rounded-2xl flex items-center justify-center mx-auto mb-3 sm:mb-4 shadow-inner"><i data-lucide="qr-code" class="w-7 h-7 sm:w-8 sm:h-8"></i></div>
+                        <h3 class="text-xl sm:text-2xl font-black text-blue-900 leading-tight">Konfirmasi Klaim</h3>
+                        <p class="text-slate-500 font-medium text-[11px] sm:text-xs px-2">Pindai kode QR pada kupon warga untuk verifikasi.</p>
+                    </div>
+                    <button onclick="startScanner()" class="w-full bg-blue-800 text-white py-3 sm:py-3.5 rounded-xl font-bold text-sm sm:text-base shadow-md active:scale-95 hover:bg-blue-900 transition-all flex justify-center items-center">BUKA KAMERA <i data-lucide="camera" class="inline ml-2 w-4 h-4 sm:w-5 sm:h-5"></i></button>
+                    
+                    <div class="pt-5 sm:pt-6 border-t border-slate-200/50">
+                        <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-3">Atau Input ID Manual</p>
+                        <div class="flex gap-2">
+                            <input id="manual-id-input" type="text" placeholder="SYH-001" class="flex-1 px-4 py-2.5 sm:py-3 rounded-xl bg-white/60 border border-white/50 font-bold text-center text-sm sm:text-base uppercase outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-800 placeholder-slate-400">
+                            <button onclick="handleManualKlaim()" class="bg-blue-800 text-white px-4 sm:px-5 rounded-xl font-bold active:scale-90 hover:bg-blue-900 transition-colors"><i data-lucide="arrow-right" class="w-4 h-4 sm:w-5 sm:h-5"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="settings" class="tab-content space-y-5 sm:space-y-6">
+            <div class="bg-glass rounded-3xl p-6 sm:p-8 space-y-6 border border-white/60 shadow-sm max-w-lg mx-auto">
+                <div class="flex items-center gap-4 border-b border-slate-200/50 pb-5">
+                    <div class="w-12 h-12 bg-blue-100 text-blue-800 rounded-xl flex items-center justify-center shrink-0">
+                        <i data-lucide="layout-template" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-black text-blue-900">Desain Kupon</h3>
+                        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Atur Data Cetak Kupon PDF/JPG</p>
+                    </div>
+                </div>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1.5 ml-1">Nama Masjid / Lembaga</label>
+                        <input id="conf-lembaga" type="text" class="w-full px-4 py-3 rounded-xl bg-white/60 border border-white/50 font-bold text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="MASJID SYAHAH ABDUL ALI AL-UTAIBI">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5 ml-1">Tahun Kegiatan</label>
+                            <input id="conf-tahun" type="text" class="w-full px-4 py-3 rounded-xl bg-white/60 border border-white/50 font-bold text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="1447 H/2026 M">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5 ml-1">Kode Prefix ID</label>
+                            <input id="conf-prefix" type="text" maxlength="4" class="w-full px-4 py-3 rounded-xl bg-white/60 border border-white/50 font-bold text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 transition-all uppercase text-center" placeholder="SYH">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1.5 ml-1">Hari/Tanggal Pengambilan</label>
+                        <input id="conf-tanggal" type="text" class="w-full px-4 py-3 rounded-xl bg-white/60 border border-white/50 font-bold text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Rabu, 10 Zulhijah 1447 H/27 Mei 2026">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="col-span-2 sm:col-span-1">
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5 ml-1">Jam Pengambilan</label>
+                            <input id="conf-jam" type="text" class="w-full px-4 py-3 rounded-xl bg-white/60 border border-white/50 font-bold text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="14.00 sampai 17.00">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1.5 ml-1">Tempat Pengambilan</label>
+                        <input id="conf-tempat" type="text" class="w-full px-4 py-3 rounded-xl bg-white/60 border border-white/50 font-bold text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Ponpes Nurul Ilmi, Jl. H. M. Riva’i...">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1.5 ml-1">Catatan Bawah</label>
+                        <input id="conf-catatan" type="text" class="w-full px-4 py-3 rounded-xl bg-white/60 border border-white/50 font-bold text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Bawa Kupon Ini Pada Saat Pengambilan...">
+                    </div>
+                </div>
+                
+                <button onclick="saveAppConfig()" class="w-full py-3.5 bg-blue-800 text-white rounded-xl font-bold active:scale-95 hover:bg-blue-900 transition-all text-sm shadow-md flex justify-center items-center gap-2 mt-4">
+                    <i data-lucide="save" class="w-4 h-4"></i> SIMPAN PENGATURAN
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+    <div id="form-modal" class="fixed inset-0 z-[150] modal-overlay hidden flex-col items-center justify-center p-4 no-print">
+        <div class="bg-glass rounded-3xl p-5 sm:p-6 max-w-sm w-full space-y-4 modal-content border border-white/60 shadow-2xl">
+            <h3 id="form-title" class="text-lg sm:text-xl font-bold text-blue-900">Mustahik</h3>
+            <input type="hidden" id="edit-id">
+            <div class="space-y-3">
+                <input id="input-name" type="text" class="w-full px-4 py-2.5 sm:py-3 rounded-xl bg-white/60 border border-white/50 font-semibold outline-none focus:ring-2 focus:ring-blue-500 text-xs sm:text-sm text-slate-800 placeholder-slate-500" placeholder="Nama Lengkap">
+                <input id="input-category" type="text" class="w-full px-4 py-2.5 sm:py-3 rounded-xl bg-white/60 border border-white/50 font-semibold outline-none focus:ring-2 focus:ring-blue-500 text-xs sm:text-sm text-slate-800 placeholder-slate-500" placeholder="Kategori">
+            </div>
+            <button onclick="saveMustahik()" class="w-full py-2.5 sm:py-3 bg-blue-800 text-white rounded-xl font-bold active:scale-95 hover:bg-blue-900 transition-all text-xs sm:text-sm shadow-md">SIMPAN DATA</button>
+            <button onclick="closeForm()" class="w-full py-2 text-slate-500 font-semibold hover:text-slate-700 text-xs sm:text-sm transition-colors">Batal</button>
         </div>
     </div>
 
     <div id="import-modal" class="fixed inset-0 z-[150] modal-overlay hidden flex-col items-center justify-center p-4 no-print">
-        <div class="bg-white rounded-[2.5rem] p-8 max-w-md w-full space-y-6 shadow-2xl modal-content">
-            <h3 class="text-2xl font-extrabold text-slate-800">Impor Massal</h3>
-            <div class="space-y-4">
-                <p class="text-xs text-slate-500 font-medium">Tempel daftar nama (Nama, Kategori) di bawah ini:</p>
-                <textarea id="input-massal" class="w-full h-48 px-6 py-4 rounded-2xl bg-slate-50 font-bold text-sm resize-none" placeholder="Contoh: Budi Santoso, Warga..."></textarea>
+        <div class="bg-glass rounded-3xl p-5 sm:p-6 max-w-sm w-full space-y-4 modal-content border border-white/60 shadow-2xl">
+            <h3 class="text-lg sm:text-xl font-bold text-blue-900">Impor Massal</h3>
+            <div class="space-y-3">
+                <p class="text-[10px] sm:text-[11px] text-slate-500 font-medium">Tempel daftar nama (Nama, Kategori) di bawah ini:</p>
+                <textarea id="input-massal" class="w-full h-32 px-4 py-3 rounded-xl bg-white/60 border border-white/50 font-semibold text-xs resize-none outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 placeholder-slate-400" placeholder="Contoh: Budi Santoso, Warga..."></textarea>
             </div>
-            <button onclick="processMassImport()" class="w-full py-4 bg-slate-900 text-white rounded-2xl font-black active:scale-95 transition-all">MULAI IMPOR</button>
-            <button onclick="closeImport()" class="w-full py-2 text-slate-400 font-bold">Batal</button>
+            <button onclick="processMassImport()" class="w-full py-2.5 sm:py-3 bg-blue-800 text-white rounded-xl font-bold active:scale-95 hover:bg-blue-900 transition-all text-xs sm:text-sm shadow-md">MULAI IMPOR</button>
+            <button onclick="closeImport()" class="w-full py-2 text-slate-500 font-semibold hover:text-slate-700 text-xs sm:text-sm transition-colors">Batal</button>
         </div>
     </div>
 
     <div id="qr-modal" class="fixed inset-0 z-[110] modal-overlay hidden flex-col items-center justify-center p-4 no-print">
-        <div class="bg-white rounded-[2.5rem] p-8 max-w-sm w-full text-center space-y-6 shadow-2xl modal-content">
-            <h3 id="modal-name" class="text-2xl font-extrabold text-slate-800"></h3>
-            <div id="qrcode-container" class="bg-white p-6 rounded-[2rem] inline-block mx-auto border-4 border-slate-50 shadow-inner"></div>
-            <p id="modal-id" class="font-mono font-black text-3xl text-emerald-600 uppercase tracking-widest"></p>
-            <div class="pt-4 flex flex-col gap-3">
-                <button id="btn-print-single" class="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all">
-                    <i data-lucide="printer" class="w-5 h-5"></i> Cetak Kupon
+        <div class="bg-glass rounded-3xl p-6 sm:p-8 max-w-[300px] sm:max-w-sm w-full text-center space-y-4 modal-content border border-white/60 shadow-2xl">
+            <h3 id="modal-name" class="text-lg sm:text-xl font-bold text-blue-900 truncate px-2"></h3>
+            <div id="qrcode-container" class="bg-white p-4 sm:p-5 rounded-2xl inline-block mx-auto border border-slate-100 shadow-sm"></div>
+            <p id="modal-id" class="font-mono font-bold text-xl sm:text-2xl text-blue-600 uppercase tracking-widest"></p>
+            <div class="pt-2 sm:pt-3 flex flex-col gap-2 sm:gap-2.5">
+                <button id="btn-print-single" class="w-full py-2.5 sm:py-3 bg-blue-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-md active:scale-95 hover:bg-blue-900 transition-all text-xs sm:text-sm">
+                    <i data-lucide="download" class="w-4 h-4"></i> Unduh JPG
                 </button>
-                <button onclick="closeModal()" class="w-full py-2 text-slate-400 font-bold">Tutup</button>
+                <button onclick="closeModal()" class="w-full py-2 text-slate-500 font-semibold hover:text-slate-700 text-xs sm:text-sm transition-colors">Tutup</button>
             </div>
         </div>
     </div>
@@ -413,61 +534,223 @@
         let html5QrCode = null;
         let toastTimeout = null;
         window.currentFacingMode = "environment"; 
+        
+        let isLoginMode = true;
+        window.loggedInName = "";
 
-        // --- FUNGSI LOGIN & LOGOUT PERBAIKAN ---
-
-        async function handleLogin() {
-            const pass = document.getElementById('login-pass').value.trim();
-            const btn = document.getElementById('btn-login-submit');
+        window.toggleAuthMode = () => {
+            isLoginMode = !isLoginMode;
+            const nameField = document.getElementById('name-field-container');
+            const btn = document.getElementById('btn-auth');
+            const link = document.getElementById('auth-toggle-link');
             
-            if (!pass) return showToast('error', 'Masukkan kode akses!');
+            if (isLoginMode) {
+                nameField.classList.add('hidden');
+                btn.innerHTML = 'Masuk Sistem <i data-lucide="log-in" class="w-4 h-4"></i>';
+                link.innerText = 'Punya akses whitelist? Daftar di sini';
+            } else {
+                nameField.classList.remove('hidden');
+                btn.innerHTML = 'Daftar Akun <i data-lucide="user-plus" class="w-4 h-4"></i>';
+                link.innerText = 'Sudah punya akun? Masuk di sini';
+            }
+            lucide.createIcons();
+        };
 
+        window.togglePasswordVisibility = () => {
+            const passwordInput = document.getElementById('login-password');
+            const eyeIcon = document.getElementById('eye-icon');
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                eyeIcon.setAttribute('data-lucide', 'eye-off');
+            } else {
+                passwordInput.type = 'password';
+                eyeIcon.setAttribute('data-lucide', 'eye');
+            }
+            lucide.createIcons();
+        };
+
+        window.handleAuth = async () => {
+            if (isLoginMode) await handleLogin();
+            else await handleRegister();
+        };
+
+        window.handleRegister = async () => {
+            const nameInput = document.getElementById('auth-name').value.trim();
+            const emailInput = document.getElementById('login-email').value.trim().toLowerCase();
+            const passwordInput = document.getElementById('login-password').value;
+
+            if (!nameInput || !emailInput || !passwordInput) return showToast('error', 'Lengkapi semua data!');
+
+            const btn = document.getElementById('btn-auth');
+            btn.innerHTML = '<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>';
             btn.disabled = true;
-            btn.innerHTML = 'VERIFIKASI...';
 
             try {
-                // Mengambil kode valid dari Firestore: artifacts/{appId}/public/data/access_codes
-                const codesRef = window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'access_codes');
-                const snapshot = await window.getDocs(codesRef);
-                const validCodes = [];
-                snapshot.forEach(doc => validCodes.push(doc.id));
-
-                if (validCodes.includes(pass)) {
-                    document.getElementById('login-screen').classList.add('hidden');
-                    document.getElementById('loading-screen').classList.remove('hidden');
-                    
-                    setTimeout(() => {
-                        document.getElementById('main-app').classList.remove('hidden');
-                        window.refreshUI();
-                    }, 1000);
-                } else {
-                    showToast('error', 'Kode akses tidak terdaftar di database!');
-                    btn.disabled = false;
-                    btn.innerHTML = 'MASUK SISTEM <i data-lucide="arrow-right" class="inline ml-2 w-5 h-5"></i>';
-                    lucide.createIcons();
+                // Perbaikan: Mencegah error "Race Condition" dari Autofill FaceID iPhone & Samsung Pass
+                // Sistem akan menunggu sejenak hingga Firebase siap sebelum menarik data.
+                if (!window.db || !window.collection) {
+                    await new Promise(r => setTimeout(r, 1500));
+                    if (!window.db) throw new Error("Koneksi lambat, coba lagi.");
                 }
-            } catch (e) {
-                console.error(e);
-                showToast('error', 'Gagal memverifikasi database.');
-                btn.disabled = false;
-                btn.innerHTML = 'MASUK SISTEM';
-            }
-        }
+                
+                // Perbaikan KHUSUS iPhone/Samsung: Memaksa autentikasi saat tombol ditekan
+                // untuk menembus blokir ITP (Intelligent Tracking Prevention) Safari/Samsung
+                if (window.auth && !window.auth.currentUser && window.signInAnonymously) {
+                    try { await window.signInAnonymously(window.auth); } catch (e) {}
+                }
 
-        function handleLogout() {
-            if (!confirm('Keluar dari sistem?')) return;
-            if (html5QrCode) stopScanner();
+                let authAttempts = 0;
+                while (window.auth && !window.auth.currentUser && authAttempts < 6) {
+                    await new Promise(r => setTimeout(r, 500));
+                    authAttempts++;
+                }
+
+                if (window.auth && !window.auth.currentUser) {
+                    throw new Error("Matikan 'Cegah Pelacakan' (Prevent Cross-Site Tracking) di pengaturan browser HP Anda.");
+                }
+
+                // 1. Cek di Whitelist
+                const whitelistRef = window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'whitelist');
+                const wlSnap = await window.getDocs(whitelistRef);
+                let isWhitelisted = false;
+                wlSnap.forEach((doc) => {
+                    if (doc.data().email === emailInput) isWhitelisted = true;
+                });
+
+                if (!isWhitelisted) {
+                    showToast('error', 'Akses Ditolak! Email belum di-whitelist.');
+                    return resetAuthBtn();
+                }
+
+                // 2. Cek apakah sudah terdaftar
+                const adminsRef = window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'admins');
+                const adSnap = await window.getDocs(adminsRef);
+                let isRegistered = false;
+                adSnap.forEach((doc) => {
+                    if (doc.data().email === emailInput) isRegistered = true;
+                });
+
+                if (isRegistered) {
+                    showToast('error', 'Email sudah terdaftar! Silakan kembali ke menu Masuk.');
+                    return resetAuthBtn();
+                }
+
+                // 3. Masukkan ke database admins (Registrasi)
+                const newAdminRef = window.doc(adminsRef);
+                await window.setDoc(newAdminRef, { name: nameInput, email: emailInput, password: passwordInput });
+
+                showToast('success', 'Pendaftaran Berhasil! Silakan Masuk.');
+                window.toggleAuthMode();
+                document.getElementById('login-password').value = '';
+                resetAuthBtn();
+
+            } catch (error) {
+                console.error("Register Error:", error);
+                showToast('error', error.message || 'Gagal mendaftar.');
+                resetAuthBtn();
+            }
+        };
+
+        window.handleLogin = async () => {
+            const emailInput = document.getElementById('login-email').value.trim().toLowerCase();
+            const passwordInput = document.getElementById('login-password').value;
             
-            document.getElementById('main-app').classList.add('hidden');
-            document.getElementById('loading-screen').classList.add('hidden');
-            document.getElementById('login-screen').classList.remove('hidden');
-            
-            document.getElementById('login-pass').value = '';
-            const btn = document.getElementById('btn-login-submit');
+            if (!emailInput || !passwordInput) return showToast('error', 'Masukkan email dan password!');
+
+            const btn = document.getElementById('btn-auth');
+            btn.innerHTML = '<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>';
+            btn.disabled = true;
+
+            try {
+                // Perbaikan: Mencegah error "Race Condition" dari Autofill FaceID iPhone & Samsung Pass
+                // Sistem akan menunggu sejenak hingga Firebase siap sebelum menarik data.
+                if (!window.db || !window.collection) {
+                    await new Promise(r => setTimeout(r, 1500));
+                    if (!window.db) throw new Error("Koneksi lambat, coba lagi.");
+                }
+                
+                // Perbaikan KHUSUS iPhone/Samsung: Memaksa autentikasi saat tombol ditekan
+                // untuk menembus blokir ITP (Intelligent Tracking Prevention) Safari/Samsung
+                if (window.auth && !window.auth.currentUser && window.signInAnonymously) {
+                    try { await window.signInAnonymously(window.auth); } catch (e) {}
+                }
+
+                let authAttempts = 0;
+                while (window.auth && !window.auth.currentUser && authAttempts < 6) {
+                    await new Promise(r => setTimeout(r, 500));
+                    authAttempts++;
+                }
+
+                if (window.auth && !window.auth.currentUser) {
+                    throw new Error("Matikan 'Cegah Pelacakan' (Prevent Cross-Site Tracking) di pengaturan browser HP Anda.");
+                }
+
+                const adminsRef = window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'admins');
+                const querySnapshot = await window.getDocs(adminsRef);
+                
+                let isAllowed = false;
+                let loggedName = "";
+                querySnapshot.forEach((doc) => {
+                    if (doc.data().email === emailInput && doc.data().password === passwordInput) {
+                        isAllowed = true;
+                        // PERBAIKAN: Menarik nama langsung dari database
+                        loggedName = doc.data().name || emailInput.split('@')[0];
+                    }
+                });
+
+                if (isAllowed) {
+                    window.loggedInEmail = emailInput;
+                    window.loggedInName = loggedName;
+                    document.getElementById('display-username').innerText = window.loggedInName;
+                    document.getElementById('user-greeting').classList.remove('hidden');
+                    if(window.startCouponSync) window.startCouponSync();
+                    showToast('success', 'Login Berhasil!');
+                    closeWelcomeScreen();
+                } else {
+                    showToast('error', 'Akses Ditolak! Email atau password salah.');
+                    resetAuthBtn();
+                }
+            } catch (error) {
+                console.error("Login Error:", error);
+                showToast('error', error.message || 'Gagal memverifikasi.');
+                resetAuthBtn();
+            }
+        };
+
+        function resetAuthBtn() {
+            const btn = document.getElementById('btn-auth');
+            if(isLoginMode) {
+                btn.innerHTML = 'Masuk Sistem <i data-lucide="log-in" class="w-4 h-4"></i>';
+            } else {
+                btn.innerHTML = 'Daftar Akun <i data-lucide="user-plus" class="w-4 h-4"></i>';
+            }
             btn.disabled = false;
-            btn.innerHTML = 'MASUK SISTEM <i data-lucide="arrow-right" class="inline ml-2 w-5 h-5"></i>';
             lucide.createIcons();
         }
+
+        function closeWelcomeScreen() {
+            const ws = document.getElementById('welcome-screen');
+            ws.style.opacity = '0';
+            setTimeout(() => { ws.style.display = 'none'; }, 700);
+        }
+
+        window.showWelcomeScreen = () => {
+            const ws = document.getElementById('welcome-screen');
+            ws.style.display = 'block';
+            setTimeout(() => { ws.style.opacity = '1'; }, 10);
+            
+            document.getElementById('login-email').value = '';
+            document.getElementById('login-password').value = '';
+            document.getElementById('auth-name').value = '';
+            window.loggedInEmail = '';
+            window.loggedInName = '';
+            document.getElementById('user-greeting').classList.add('hidden');
+            
+            isLoginMode = true;
+            document.getElementById('name-field-container').classList.add('hidden');
+            document.getElementById('auth-toggle-link').innerText = 'Punya akses whitelist? Daftar di sini';
+            resetAuthBtn();
+        };
 
         window.hideLoading = () => {
             const screen = document.getElementById('loading-screen');
@@ -499,16 +782,16 @@
             document.getElementById('progress-claimed').style.width = total > 0 ? (claimed / total * 100) + '%' : '0%';
             document.getElementById('progress-pending').style.width = total > 0 ? (pending / total * 100) + '%' : '0%';
             const recentHtml = window.coupons.filter(c => c.status === 'Sudah Diambil').slice(-5).reverse().map(c => `
-                <div class="flex items-center gap-5 p-5 bg-white rounded-3xl border border-slate-50 shadow-sm transition-all hover:scale-[1.01]">
-                    <div class="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-600 font-black">${c.name.charAt(0)}</div>
-                    <div class="flex-1">
-                        <p class="text-sm font-black text-slate-800 uppercase tracking-tighter">${c.name}</p>
-                        <p class="text-[9px] text-slate-400 font-black uppercase tracking-widest">${c.category}</p>
+                <div class="flex items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-white/60 rounded-2xl border border-white/50 shadow-sm transition-all hover:scale-[1.01]">
+                    <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs sm:text-sm shrink-0">${c.name.charAt(0)}</div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-tight truncate">${c.name}</p>
+                        <p class="text-[9px] text-slate-500 font-semibold uppercase tracking-widest truncate">${c.category}</p>
                     </div>
-                    <div class="text-right text-[10px] font-black text-emerald-500 uppercase">${c.timestamp || ''}</div>
+                    <div class="text-right text-[9px] font-bold text-blue-500 uppercase shrink-0">${c.timestamp || ''}</div>
                 </div>
             `).join('');
-            document.getElementById('recent-activity').innerHTML = recentHtml || '<p class="text-center py-12 text-slate-300 italic text-sm">Belum ada pengambilan...</p>';
+            document.getElementById('recent-activity').innerHTML = recentHtml || '<p class="text-center py-8 sm:py-10 text-slate-400 italic text-xs sm:text-sm font-medium">Belum ada pengambilan...</p>';
             lucide.createIcons();
         }
 
@@ -519,46 +802,52 @@
 
             const uniqueCategories = ['Semua', ...new Set(window.coupons.map(c => c.category))];
             document.getElementById('category-filters').innerHTML = uniqueCategories.map(cat => `
-                <button onclick="setFilter('${cat}')" class="px-6 py-3 rounded-full text-[10px] font-black uppercase whitespace-nowrap transition-all ${currentFilter === cat ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-400'}">
+                <button onclick="setFilter('${cat}')" class="px-4 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-[11px] font-bold uppercase whitespace-nowrap transition-all ${currentFilter === cat ? 'bg-blue-800 text-white shadow-sm' : 'bg-white/60 text-slate-500 border border-white/50 hover:bg-white'}">
                     ${cat}
                 </button>
             `).join('');
 
             document.getElementById('kupon-table-body').innerHTML = filtered.map(c => `
-                <tr class="hover:bg-slate-50 transition-colors">
-                    <td class="px-8 py-5 text-center"><input type="checkbox" onchange="toggleSelect('${c.id}')" ${window.selectedIds.includes(c.id) ? 'checked' : ''}></td>
-                    <td class="px-4 py-5 font-mono font-bold text-slate-300 text-center">${c.id}</td>
-                    <td class="px-8 py-5 font-black text-slate-800 uppercase tracking-tighter">${c.name}</td>
-                    <td class="px-8 py-5 text-center border-x border-slate-50"><span class="text-[9px] font-black text-slate-400 uppercase tracking-widest">${c.category}</span></td>
-                    <td class="px-8 py-5 text-center">
-                        <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full text-[9px] font-black uppercase ${c.status === 'Sudah Diambil' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}">${c.status}</div>
+                <tr class="hover:bg-white/40 transition-colors">
+                    <td class="px-4 py-3 sm:py-4 text-center"><input type="checkbox" onchange="toggleSelect('${c.id}')" ${window.selectedIds.includes(c.id) ? 'checked' : ''}></td>
+                    <td class="px-4 py-3 sm:py-4 font-mono font-semibold text-slate-500 text-center text-xs sm:text-sm">${c.id}</td>
+                    <td class="px-6 py-3 sm:py-4 font-bold text-slate-800 uppercase tracking-tight">${c.name}</td>
+                    <td class="px-6 py-3 sm:py-4 text-center"><span class="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-widest">${c.category}</span></td>
+                    <td class="px-6 py-3 sm:py-4 text-center">
+                        <div class="flex flex-col items-center gap-1">
+                            <div class="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-md text-[9px] font-bold uppercase ${c.status === 'Sudah Diambil' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-orange-50 text-orange-600 border border-orange-100'}">${c.status}</div>
+                            ${c.status === 'Sudah Diambil' && c.timestamp ? `<span class="text-[8px] sm:text-[9px] text-slate-400 font-semibold">${c.timestamp}</span>` : ''}
+                        </div>
                     </td>
-                    <td class="px-8 py-5">
-                        <div class="flex items-center justify-center gap-2">
-                            <button onclick="showQRModal('${c.id}')" class="p-3 bg-slate-50 rounded-2xl hover:text-emerald-600"><i data-lucide="qr-code" class="w-4 h-4"></i></button>
-                            <button onclick="openForm('${c.id}')" class="p-3 bg-slate-50 rounded-2xl hover:text-blue-600"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
-                            <button onclick="deleteMustahik('${c.id}')" class="p-3 bg-slate-50 rounded-2xl hover:text-red-600"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                    <td class="px-6 py-3 sm:py-4">
+                        <div class="flex items-center justify-center gap-1 sm:gap-1.5">
+                            <button onclick="showQRModal('${c.id}')" class="p-1.5 sm:p-2 bg-white/60 border border-white/50 rounded-lg hover:bg-blue-50 hover:text-blue-600 transition-colors"><i data-lucide="qr-code" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i></button>
+                            <button onclick="openForm('${c.id}')" class="p-1.5 sm:p-2 bg-white/60 border border-white/50 rounded-lg hover:bg-blue-50 hover:text-blue-600 transition-colors"><i data-lucide="edit-3" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i></button>
+                            <button onclick="deleteMustahik('${c.id}')" class="p-1.5 sm:p-2 bg-white/60 border border-white/50 rounded-lg hover:bg-red-50 hover:text-red-600 transition-colors"><i data-lucide="trash-2" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i></button>
                         </div>
                     </td>
                 </tr>
             `).join('');
 
             document.getElementById('kupon-mobile-list').innerHTML = filtered.map(c => `
-                <div class="bg-white p-6 rounded-[2.5rem] border border-slate-50 shadow-sm space-y-4">
+                <div class="bg-white/60 backdrop-blur-sm p-4 sm:p-5 rounded-2xl border border-white/60 shadow-sm space-y-3 transition-all">
                     <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-3">
+                        <div class="flex items-center gap-2.5">
                             <input type="checkbox" onchange="toggleSelect('${c.id}')" ${window.selectedIds.includes(c.id) ? 'checked' : ''}>
                             <div>
-                                <h4 class="font-black text-slate-800 uppercase tracking-tighter">${c.name}</h4>
-                                <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest">${c.id} • ${c.category}</p>
+                                <h4 class="font-bold text-xs sm:text-sm text-slate-800 uppercase tracking-tight">${c.name}</h4>
+                                <p class="text-[9px] font-semibold text-slate-500 uppercase tracking-widest">${c.id} • ${c.category}</p>
                             </div>
                         </div>
-                        <div class="text-[9px] font-black uppercase ${c.status === 'Sudah Diambil' ? 'text-emerald-600' : 'text-orange-500'}">${c.status}</div>
+                        <div class="flex flex-col items-end gap-1">
+                            <div class="text-[8px] sm:text-[9px] px-2 py-1 rounded-md font-bold uppercase ${c.status === 'Sudah Diambil' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-orange-50 text-orange-600 border border-orange-100'}">${c.status}</div>
+                            ${c.status === 'Sudah Diambil' && c.timestamp ? `<span class="text-[8px] text-slate-400 font-semibold">${c.timestamp}</span>` : ''}
+                        </div>
                     </div>
-                    <div class="flex gap-2 pt-2 border-t border-slate-50">
-                         <button onclick="showQRModal('${c.id}')" class="flex-1 p-4 bg-slate-50 rounded-2xl flex justify-center"><i data-lucide="qr-code" class="w-5 h-5"></i></button>
-                         <button onclick="openForm('${c.id}')" class="flex-1 p-4 bg-slate-50 rounded-2xl flex justify-center"><i data-lucide="edit-3" class="w-5 h-5"></i></button>
-                         <button onclick="deleteMustahik('${c.id}')" class="flex-1 p-4 bg-slate-50 rounded-2xl flex justify-center"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
+                    <div class="flex gap-1.5 pt-2 border-t border-slate-200/50">
+                         <button onclick="showQRModal('${c.id}')" class="flex-1 py-1.5 sm:py-2 bg-white/50 border border-white/50 rounded-lg flex justify-center hover:bg-blue-50 hover:text-blue-600 transition-colors"><i data-lucide="qr-code" class="w-4 h-4 text-slate-500"></i></button>
+                         <button onclick="openForm('${c.id}')" class="flex-1 py-1.5 sm:py-2 bg-white/50 border border-white/50 rounded-lg flex justify-center hover:bg-blue-50 hover:text-blue-600 transition-colors"><i data-lucide="edit-3" class="w-4 h-4 text-slate-500"></i></button>
+                         <button onclick="deleteMustahik('${c.id}')" class="flex-1 py-1.5 sm:py-2 bg-white/50 border border-white/50 rounded-lg flex justify-center hover:bg-red-50 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4 text-slate-500"></i></button>
                     </div>
                 </div>
             `).join('');
@@ -624,15 +913,17 @@
             if (!text) return showToast('error', 'Kotak teks kosong!');
             const lines = text.split('\n');
             const batch = window.writeBatch(window.db);
+            const pfx = (window.appConfig.prefix || 'SYH').toUpperCase();
+            
             let lastNum = window.coupons.reduce((max, c) => Math.max(max, parseInt(c.id.split('-')[1]) || 0), 0);
             try {
                 lines.forEach(line => {
                     let [name, category] = line.split(/[,\t]/);
                     if (name && name.trim()) {
                         lastNum++;
-                        const docId = `QRB-${lastNum.toString().padStart(3, '0')}`;
+                        const docId = `${pfx}-${lastNum.toString().padStart(3, '0')}`;
                         batch.set(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'coupons', docId), {
-                            name: name.trim(), category: (category || 'Umum').trim(), status: 'Belum Diambil', timestamp: null
+                            name: name.trim(), category: (category || 'Umum').trim(), status: 'Belum Diambil', timestamp: null, createdBy: window.loggedInEmail
                         });
                     }
                 });
@@ -649,9 +940,10 @@
                 let docId = id;
                 let data = { name, category };
                 if (!id) {
+                    const pfx = (window.appConfig.prefix || 'SYH').toUpperCase();
                     const lastNum = window.coupons.reduce((max, c) => Math.max(max, parseInt(c.id.split('-')[1]) || 0), 0);
-                    docId = `QRB-${(lastNum + 1).toString().padStart(3, '0')}`;
-                    data.status = "Belum Diambil"; data.timestamp = null;
+                    docId = `${pfx}-${(lastNum + 1).toString().padStart(3, '0')}`;
+                    data.status = "Belum Diambil"; data.timestamp = null; data.createdBy = window.loggedInEmail;
                 }
                 await window.setDoc(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'coupons', docId), data, { merge: true });
                 showToast('success', 'Berhasil disimpan.'); closeForm();
@@ -663,6 +955,23 @@
             try { await window.deleteDoc(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'coupons', id)); showToast('success', 'Terhapus.'); } catch (e) { showToast('error', 'Gagal.'); }
         }
 
+        window.saveAppConfig = async () => {
+            const lembaga = document.getElementById('conf-lembaga').value.trim();
+            const tahun = document.getElementById('conf-tahun').value.trim();
+            const prefix = document.getElementById('conf-prefix').value.trim().toUpperCase() || 'SYH';
+            const tanggal = document.getElementById('conf-tanggal').value.trim();
+            const jam = document.getElementById('conf-jam').value.trim();
+            const tempat = document.getElementById('conf-tempat').value.trim();
+            const catatan = document.getElementById('conf-catatan').value.trim();
+            
+            try {
+                await window.setDoc(window.doc(window.db, 'artifacts', window.appId, 'public', 'config'), { lembaga, tahun, prefix, tanggal, jam, tempat, catatan }, { merge: true });
+                showToast('success', 'Pengaturan Tersimpan!');
+            } catch (error) {
+                showToast('error', 'Gagal menyimpan pengaturan.');
+            }
+        };
+
         function exportData() {
             const rows = window.coupons.map(c => [c.id, c.name, c.category, c.status, c.timestamp || "-"]);
             let csv = "ID,Nama,Kategori,Status,Waktu\n" + rows.map(e => e.join(",")).join("\n");
@@ -671,33 +980,241 @@
             link.download = "Laporan_Kurban.csv"; link.click();
         }
 
+        async function generateCouponCanvas(c) {
+            return new Promise((resolve) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 1000;
+                canvas.height = 500;
+                const ctx = canvas.getContext('2d');
+
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+                    ctx.beginPath();
+                    ctx.moveTo(x + radius, y);
+                    ctx.lineTo(x + width - radius, y);
+                    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+                    ctx.lineTo(x + width, y + height - radius);
+                    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+                    ctx.lineTo(x + radius, y + height);
+                    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+                    ctx.lineTo(x, y + radius);
+                    ctx.quadraticCurveTo(x, y, x + radius, y);
+                    ctx.closePath();
+                    if (fill) ctx.fill();
+                    if (stroke) ctx.stroke();
+                }
+
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.08)';
+                ctx.shadowBlur = 20;
+                ctx.shadowOffsetY = 10;
+
+                ctx.fillStyle = '#ffffff';
+                roundRect(ctx, 20, 20, 960, 460, 16, true, false);
+                ctx.shadowColor = 'transparent'; 
+                ctx.strokeStyle = '#e5e7eb';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(20 + 16, 20);
+                ctx.lineTo(300, 20);
+                ctx.lineTo(300, 480);
+                ctx.lineTo(20 + 16, 480);
+                ctx.quadraticCurveTo(20, 480, 20, 480 - 16);
+                ctx.lineTo(20, 20 + 16);
+                ctx.quadraticCurveTo(20, 20, 20 + 16, 20);
+                ctx.closePath();
+                ctx.fillStyle = '#1e3a8a';
+                ctx.fill();
+                ctx.restore();
+
+                ctx.save();
+                ctx.setLineDash([8, 8]);
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#cbd5e1';
+                ctx.beginPath();
+                ctx.moveTo(300, 20);
+                ctx.lineTo(300, 480);
+                ctx.stroke();
+                ctx.restore();
+
+                ctx.fillStyle = '#ffffff'; 
+                ctx.beginPath();
+                ctx.arc(300, 20, 15, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#e5e7eb';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(300, 20, 15, 0, Math.PI); 
+                ctx.stroke();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(300, 480, 15, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(300, 480, 15, Math.PI, 0); 
+                ctx.stroke();
+
+                const tempDiv = document.createElement('div');
+                new QRCode(tempDiv, { text: c.id, width: 250, height: 250, correctLevel: QRCode.CorrectLevel.H });
+
+                setTimeout(() => {
+                    const qrCanvas = tempDiv.querySelector('canvas');
+                    
+                    ctx.fillStyle = '#ffffff';
+                    roundRect(ctx, 60, 60, 180, 180, 12, true, false);
+                    
+                    if (qrCanvas) {
+                        ctx.drawImage(qrCanvas, 70, 70, 160, 160); 
+                    }
+
+                    const centerX = 150;
+                    ctx.textAlign = 'center';
+                    
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                    ctx.font = 'bold 12px Arial';
+                    ctx.fillText('I D  K U P O N', centerX, 280);
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 36px Arial';
+                    ctx.fillText(c.id, centerX, 330);
+
+                    ctx.strokeStyle = '#60a5fa';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(50, 370);
+                    ctx.lineTo(250, 370);
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#ffffff';
+                    let catText = `KATEGORI: ${c.category.toUpperCase()}`;
+                    ctx.font = 'bold 12px Arial';
+                    let textW = ctx.measureText(catText).width;
+                    roundRect(ctx, centerX - (textW/2) - 15, 400, textW + 30, 26, 13, true, false);
+                    ctx.fillStyle = '#1e3a8a';
+                    ctx.fillText(catText, centerX, 418);
+
+                    const mainX = 340;
+                    const rightX = 940;
+
+                    ctx.textAlign = 'left';
+                    ctx.fillStyle = '#1e3a8a';
+                    ctx.font = 'bold 22px Arial';
+                    ctx.fillText('KUPON KURBAN IDULADHA', mainX, 75);
+
+                    ctx.fillStyle = '#2563eb';
+                    ctx.font = 'italic 18px Arial';
+                    ctx.fillText(window.appConfig.tahun || '1447 H / 2026 M', mainX, 100);
+
+                    ctx.textAlign = 'right';
+                    ctx.fillStyle = '#9ca3af';
+                    ctx.font = 'bold 11px Arial';
+                    ctx.fillText('PANITIA KURBAN', rightX, 75);
+
+                    ctx.fillStyle = '#1f2937';
+                    ctx.font = 'bold 15px Arial';
+                    ctx.fillText(window.appConfig.lembaga || 'Masjid Syahah Abdul Ali Al-Utaibi', rightX, 95);
+
+                    ctx.strokeStyle = '#f3f4f6';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(mainX, 125);
+                    ctx.lineTo(rightX, 125);
+                    ctx.stroke();
+
+                    ctx.textAlign = 'left';
+                    ctx.fillStyle = '#9ca3af';
+                    ctx.font = 'bold 13px Arial';
+                    ctx.fillText('N A M A  P E N E R I M A', mainX, 160);
+
+                    ctx.fillStyle = '#1e3a8a';
+                    ctx.font = 'bold 44px Arial';
+                    let name = c.name.toUpperCase();
+                    if(name.length > 20) name = name.substring(0, 20) + '...';
+                    ctx.fillText(name, mainX, 215);
+
+                    ctx.fillStyle = '#f9fafb';
+                    ctx.strokeStyle = '#f3f4f6';
+                    ctx.lineWidth = 1;
+                    roundRect(ctx, mainX, 250, 600, 110, 12, true, true);
+
+                    ctx.font = 'bold 14px Arial';
+                    const labelColor = '#9ca3af';
+                    const valColor = '#374151';
+                    
+                    ctx.fillStyle = labelColor;
+                    ctx.fillText('Hari/Tgl', mainX + 20, 285);
+                    ctx.fillStyle = valColor;
+                    ctx.fillText(': ' + (window.appConfig.tanggal || 'Rabu, 10 Zulhijah 1447 H / 27 Mei 2026'), mainX + 110, 285);
+
+                    ctx.fillStyle = labelColor;
+                    ctx.fillText('Jam', mainX + 20, 315);
+                    ctx.fillStyle = valColor;
+                    ctx.fillText(': ' + (window.appConfig.jam || '14.00 - 17.00 WIB'), mainX + 110, 315);
+
+                    ctx.fillStyle = labelColor;
+                    ctx.fillText('Tempat', mainX + 20, 345);
+                    ctx.fillStyle = valColor;
+                    let tempat = window.appConfig.tempat || "Ponpes Nurul Ilmi, Jl. H. M. Riva'i, Desa Manggul, Lahat";
+                    if(tempat.length > 60) {
+                         ctx.fillText(': ' + tempat.substring(0, 60) + '...', mainX + 110, 345);
+                    } else {
+                         ctx.fillText(': ' + tempat, mainX + 110, 345);
+                    }
+
+                    ctx.fillStyle = '#eff6ff';
+                    ctx.strokeStyle = '#dbeafe';
+                    roundRect(ctx, mainX, 385, 600, 45, 8, true, true);
+                    
+                    ctx.textAlign = 'center';
+                    ctx.fillStyle = '#2563eb';
+                    ctx.font = 'bold 14px Arial';
+                    const catatan = window.appConfig.catatan || 'Penting: Harap membawa kupon ini pada saat pengambilan daging kurban.';
+                    ctx.fillText('⚠️ ' + catatan, mainX + 300, 413);
+
+                    resolve(canvas);
+                }, 50);
+            });
+        }
+
         async function printAllCoupons() {
-            if (!window.coupons || window.coupons.length === 0) return showToast('error', 'Tidak ada data untuk dicetak.');
-            const printArea = document.getElementById('print-area');
-            printArea.innerHTML = '';
-            const grid = document.createElement('div');
-            grid.style.display = 'grid'; grid.style.gridTemplateColumns = '1fr 1fr'; grid.style.gap = '20px'; grid.style.padding = '20px'; grid.style.width = '100%';
-            printArea.appendChild(grid);
-            showToast('info', 'Menyiapkan dokumen... (0%)');
-            const batchSize = 10;
-            for (let i = 0; i < window.coupons.length; i += batchSize) {
-                const batch = window.coupons.slice(i, i + batchSize);
-                batch.forEach(c => {
-                    const card = document.createElement('div');
-                    card.className = 'coupon-card';
-                    card.style.display = 'flex'; card.style.alignItems = 'center'; card.style.gap = '15px'; card.style.padding = '15px'; card.style.border = '1px solid #333'; card.style.borderRadius = '8px'; card.style.backgroundColor = '#fff'; card.style.pageBreakInside = 'avoid';
-                    const randomStr = Math.random().toString(36).substring(7);
-                    const qrId = `qr_p_all_${c.id.replace(/-/g, '_')}_${randomStr}`;
-                    card.innerHTML = `<div id="${qrId}" style="width:100px; height:100px;"></div><div style="flex:1"><p style="font-size:10px; font-weight:800; color:#444; margin:0; text-transform:uppercase">Kupon Kurban 1447 H</p><h4 style="font-size:16px; font-weight:700; margin:2px 0; color:#000; text-transform:uppercase">${c.name}</h4><p style="font-size:22px; font-weight:900; color:#059669; font-family:monospace; margin:0">${c.id}</p><p style="font-size:9px; font-weight:600; color:#555; margin:0">${c.category}</p></div>`;
-                    grid.appendChild(card);
-                    new QRCode(document.getElementById(qrId), { text: c.id, width: 100, height: 100, correctLevel: QRCode.CorrectLevel.H });
-                });
-                const percent = Math.round(((i + batch.length) / window.coupons.length) * 100);
-                showToast('info', `Menyiapkan dokumen... (${percent}%)`);
-                await new Promise(resolve => setTimeout(resolve, 50));
+            if (!window.coupons || window.coupons.length === 0) return showToast('error', 'Tidak ada data.');
+            
+            showToast('info', 'Menyiapkan file PDF... (0%)');
+            
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+            
+            const marginX = 15, marginY = 12, cardW = 180, cardH = 90, spacingY = 5;
+            let currentY = marginY, countOnPage = 0;
+            
+            for (let i = 0; i < window.coupons.length; i++) {
+                const c = window.coupons[i];
+                const canvas = await generateCouponCanvas(c);
+                const imgData = canvas.toDataURL('image/jpeg', 1.0);
+                
+                if (countOnPage === 3) { 
+                    doc.addPage();
+                    currentY = marginY; countOnPage = 0;
+                }
+                
+                doc.addImage(imgData, 'JPEG', marginX, currentY, cardW, cardH);
+                
+                countOnPage++;
+                currentY += cardH + spacingY; 
+                
+                if (i % 5 === 0) {
+                    const percent = Math.round((i / window.coupons.length) * 100);
+                    showToast('info', `Menyiapkan PDF... (${percent}%)`);
+                }
             }
-            showToast('success', 'Dokumen siap!');
-            setTimeout(() => window.print(), 500);
+            
+            doc.save('Semua_Kupon_Kurban.pdf');
+            showToast('success', 'PDF Berhasil Diunduh!');
         }
 
         async function processKlaim(id) {
@@ -705,9 +1222,11 @@
             if (!c) return showToast('error', 'KUPON TIDAK VALID');
             if (c.status === 'Sudah Diambil') return showToast('error', 'SUDAH DIAMBIL');
             const now = new Date();
+            const dateStr = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth()+1).toString().padStart(2, '0')}/${now.getFullYear()}`;
             const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+            const fullTimeStr = `${dateStr} ${timeStr}`;
             try {
-                await window.updateDoc(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'coupons', c.id), { status: 'Sudah Diambil', timestamp: timeStr });
+                await window.updateDoc(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'coupons', c.id), { status: 'Sudah Diambil', timestamp: fullTimeStr });
                 showToast('success', `BERHASIL: ${c.name}`);
                 stopScanner();
             } catch (e) { showToast('error', 'Gagal Klaim'); }
@@ -725,16 +1244,20 @@
             const container = document.getElementById('qrcode-container');
             container.innerHTML = '';
             new QRCode(container, { text: c.id, width: 220, height: 220 });
-            document.getElementById('btn-print-single').onclick = () => {
-                const printArea = document.getElementById('print-area'); printArea.innerHTML = '';
-                const card = document.createElement('div');
-                card.className = 'coupon-card'; card.style.maxWidth = '400px'; card.style.margin = '40px auto'; card.style.display = 'flex'; card.style.alignItems = 'center'; card.style.gap = '20px'; card.style.padding = '30px'; card.style.border = '3px solid #000'; card.style.borderRadius = '16px';
-                card.innerHTML = `<div id="qr_p_single_area" style="width:120px; height:120px;"></div><div><p style="font-size:10px; font-weight:900; color:#666; margin:0; text-transform:uppercase">Kupon Kurban 1447 H</p><h4 style="font-size:20px; font-weight:800; margin:5px 0">${c.name}</h4><p style="font-size:32px; font-weight:900; color:#10b981; margin:0">${c.id}</p></div>`;
-                printArea.appendChild(card);
-                new QRCode(document.getElementById('qr_p_single_area'), { text: c.id, width: 120, height: 120 });
-                setTimeout(() => window.print(), 500);
+            
+            document.getElementById('btn-print-single').onclick = async () => {
+                showToast('info', 'Menyiapkan file JPG...');
+                const canvas = await generateCouponCanvas(c);
+                const url = canvas.toDataURL('image/jpeg', 1.0);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Kupon_${c.id}.jpg`;
+                a.click();
+                showToast('success', 'JPG Berhasil Diunduh!');
             };
-            document.getElementById('qr-modal').classList.remove('hidden'); document.getElementById('qr-modal').classList.add('flex');
+            
+            document.getElementById('qr-modal').classList.remove('hidden'); 
+            document.getElementById('qr-modal').classList.add('flex');
         }
 
         function closeModal() { document.getElementById('qr-modal').classList.add('hidden'); }
@@ -743,23 +1266,40 @@
             const scannerView = document.getElementById('scanner-view');
             const selectionView = document.getElementById('selection-view');
             const statusText = document.getElementById('scanner-status-text');
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { showToast('error', 'Browser tidak mendukung kamera.'); return; }
-            selectionView.classList.add('hidden'); scannerView.classList.remove('hidden'); statusText.innerText = "Memulai...";
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showToast('error', 'Browser tidak mendukung kamera.'); return;
+            }
+
+            selectionView.classList.add('hidden');
+            scannerView.classList.remove('hidden');
+            statusText.innerText = "Memulai...";
+
             try {
                 if (html5QrCode) { await html5QrCode.clear(); }
                 html5QrCode = new Html5Qrcode("reader");
                 const config = { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
+                
                 html5QrCode.start({ facingMode: window.currentFacingMode }, config, (text) => {
                     if (navigator.vibrate) navigator.vibrate(100);
                     processKlaim(text);
-                }).catch(err => html5QrCode.start({ facingMode: "user" }, config, (text) => processKlaim(text)));
-                statusText.innerText = "Scanner Siap"; showToast('success', 'Kamera dinyalakan.');
-            } catch (err) { console.error("Camera Error:", err); showToast('error', 'Gagal memuat kamera.'); stopScanner(); }
+                }).catch(err => {
+                    html5QrCode.start({ facingMode: "user" }, config, (text) => processKlaim(text));
+                });
+                
+                statusText.innerText = "Scanner Siap";
+                showToast('success', 'Kamera dinyalakan.');
+            } catch (err) {
+                console.error("Camera Error:", err);
+                showToast('error', 'Gagal memuat kamera. Cek izin browser.');
+                stopScanner();
+            }
         }
 
         async function stopScanner() { 
             if (html5QrCode) { try { await html5QrCode.stop(); await html5QrCode.clear(); } catch (e) {} html5QrCode = null; }
-            document.getElementById('selection-view').classList.remove('hidden'); document.getElementById('scanner-view').classList.add('hidden'); 
+            document.getElementById('selection-view').classList.remove('hidden'); 
+            document.getElementById('scanner-view').classList.add('hidden'); 
         }
 
         function switchCamera() {
@@ -773,13 +1313,15 @@
             if (toastTimeout) clearTimeout(toastTimeout);
             const icon = document.getElementById('toast-icon');
             document.getElementById('toast-text').innerText = text;
-            t.className = "fixed top-8 left-1/2 -translate-x-1/2 z-[210] px-6 py-4 rounded-full shadow-2xl flex items-center gap-3 transition-all duration-500 border-2 bg-white/95 backdrop-blur-md opacity-100 scale-100 pointer-events-auto";
+            t.className = "fixed top-8 left-1/2 -translate-x-1/2 z-[210] px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 transition-all duration-500 border bg-white/95 backdrop-blur-md opacity-100 scale-100 pointer-events-auto";
             if (type === 'success') { t.classList.add('border-emerald-500', 'text-emerald-800'); icon.setAttribute('data-lucide', 'check-circle'); }
             else if (type === 'info') { t.classList.add('border-blue-500', 'text-blue-800'); icon.setAttribute('data-lucide', 'info'); }
             else { t.classList.add('border-red-500', 'text-red-800'); icon.setAttribute('data-lucide', 'alert-circle'); }
             lucide.createIcons();
             toastTimeout = setTimeout(() => {
-                t.classList.replace('opacity-100', 'opacity-0'); t.classList.replace('scale-100', 'scale-90'); t.classList.add('pointer-events-none');
+                t.classList.replace('opacity-100', 'opacity-0');
+                t.classList.replace('scale-100', 'scale-90');
+                t.classList.add('pointer-events-none');
             }, 3000);
         }
 
